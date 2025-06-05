@@ -1,0 +1,2 @@
+FROM nvcr.io/nvidia/holoscan-for-media/nmos-cpp:0.4.0
+COPY registry.json /home/registry.json

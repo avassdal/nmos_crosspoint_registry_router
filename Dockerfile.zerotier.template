@@ -1,0 +1,22 @@
+FROM balenalib/%%BALENA_MACHINE_NAME%%:latest
+
+# Install required packages
+RUN apt-get update
+RUN apt-get install -y network-manager systemd bridge-utils iptables
+RUN install_packages
+
+# Mask NM service in container to avoid conflicts with host
+RUN systemctl mask NetworkManager.service
+
+# Install ZeroTier
+RUN curl https://install.zerotier.com | bash; exit 0
+
+# Configure ZeroTier to run with user permissions
+RUN sed -i 's/\/usr\/sbin\/zerotier-one/\/usr\/sbin\/zerotier-one -U/g' /lib/systemd/system/zerotier-one.service
+
+WORKDIR /scripts
+COPY scripts/start.sh .
+RUN chmod +x start.sh
+RUN update-alternatives --set iptables /usr/sbin/iptables-legacy
+
+CMD /bin/bash start.sh

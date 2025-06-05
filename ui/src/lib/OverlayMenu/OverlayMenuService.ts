@@ -47,8 +47,7 @@ class _OverlayMenuService {
 
 
     tooltip(element:any){
-        
-        
+        let text:string = element.getAttribute("data-tooltip");
         let position:string = element.getAttribute("data-tooltip-position");
         let p = ["right","bottom"];
         try{
@@ -58,7 +57,7 @@ class _OverlayMenuService {
         }catch(e){}
 
         element.addEventListener("mouseover", (event:any) => {
-            let text:string = element.getAttribute("data-tooltip");
+
             let r = element.getBoundingClientRect();
             let y = 0;
             let x = 0;

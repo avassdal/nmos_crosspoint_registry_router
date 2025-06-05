@@ -1,4 +1,4 @@
-version: '3.6'
+version: '2.4'
 
 services:
 
@@ -9,69 +9,51 @@ services:
     container_name: nmos-crosspoint_v2
     hostname: nmos-crosspoint_v2
     domainname: local
-    ports:
-    - "80:80"
+    network_mode: host
     volumes:
-    - "./server/config:/nmos-crosspoint/server/config"
-    - "./server/state:/nmos-crosspoint/server/state"
-    networks:
-      oob:
-        ipv4_address: '10.1.0.20'
-      amber:
-        ipv4_address: '10.11.0.20'
-      blue:
-        ipv4_address: '10.12.0.20'
+    - nmos-state:/nmos-crosspoint/server/state
+    # Added depends_on for startup order (optional but good practice)
+    depends_on:
+      - nmos-registry
+    restart: unless-stopped # Added restart policy
 
-  nmos-crosspoint-dev:
-    profiles: ["dev"]
-    build: 
-      context: './'
-      dockerfile: Dockerfile.dev
-    container_name: nmos-crosspoint-dev
-    hostname: nmos-crosspoint-dev
-    domainname: local
-    ports:
-    - "80:80"
-    - "5137:5137"
+  nmos-registry:
+    # image: rhastie/nmos-cpp:latest
+    # image: nvcr.io/nvidia/holoscan-for-media/nmos-cpp:0.4.0
+    build:
+      context: .
+      dockerfile: Dockerfile.registry
+    container_name: nmos-registry
+    hostname: nmos-registry
+    privileged: true # Added based on rhastie/nmos-cpp documentation
+    network_mode: host
+    restart: unless-stopped # Added restart policy
+    environment:
+      - RUN_NODE=FALSE
+      - DBUS_SYSTEM_BUS_ADDRESS=unix:path=/host/run/dbus/system_bus_socket
+    # No volumes needed for basic registry operation
+    labels:
+      io.balena.features.dbus: '1'
+    
+  # ZeroTier gateway service
+  zerotier:
+    build:
+      context: ./
+      dockerfile: Dockerfile.zerotier.template
+    privileged: true
+    network_mode: host
+    cap_add:
+      - SYS_ADMIN
+      - NET_ADMIN
+      - NET_RAW
     volumes:
-    - "./server:/nmos-crosspoint/server"
-    - "./ui:/nmos-crosspoint/ui"
-    - "/nmos-crosspoint/server/node_modules"
-    - "/nmos-crosspoint/ui/node_modules"
-    networks:
-      oob:
-        ipv4_address: '10.1.0.18'
-      amber:
-        ipv4_address: '10.11.0.18'
-      blue:
-        ipv4_address: '10.12.0.18'
-        
+      - zerotier-data:/var/lib/zerotier-one
+    restart: unless-stopped
+    labels:
+      io.balena.features.dbus: '1'
+    environment:
+      - DBUS_SYSTEM_BUS_ADDRESS=unix:path=/host/run/dbus/system_bus_socket
 
-networks:
-    oob:
-        name: oob
-        # Create external macvlan subnet using host physical interface allowing containers to have their own IP addresses
-        driver: macvlan
-        driver_opts:
-            parent: ens192
-        ipam:
-            config:
-            - subnet: 10.1.0.0/24
-    amber:
-        name: amber
-        # Create external macvlan subnet using host physical interface allowing containers to have their own IP addresses
-        driver: macvlan
-        driver_opts:
-            parent: ens224
-        ipam:
-            config:
-            - subnet: 10.11.0.0/24
-    blue:
-        name: blue
-        # Create external macvlan subnet using host physical interface allowing containers to have their own IP addresses
-        driver: macvlan
-        driver_opts:
-            parent: ens256
-        ipam:
-            config:
-            - subnet: 10.12.0.0/24
+volumes:
+  nmos-state:
+  zerotier-data:

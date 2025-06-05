@@ -6,5 +6,8 @@
         "rootDir": "./src",
         "sourceMap": true,
         "lib": ["esnext"]
-    }
+    },
+    "exclude": [
+        "src/lib/WebsocketClient.ts"
+    ]
 }

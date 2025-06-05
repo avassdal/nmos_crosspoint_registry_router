@@ -94,6 +94,3 @@ interface TopologyState {
     devices:NetworkDevice[],
     infrastructure:NetworkInfrastructure[],
  };
-
-
-

@@ -7,10 +7,7 @@
        VideoCamera, Microphone, SpeakerWave, Tv,
        ArrowRightStartOnRectangle, ArrowLeftEndOnRectangle,
        CodeBracketSquare,
-       BarsArrowDown, BarsArrowUp, ArrowUturnLeft, CodeBracket,
-
-       Trash
-
+       BarsArrowDown, BarsArrowUp, ArrowUturnLeft, CodeBracket
      } from "svelte-hero-icons";
     import SetupFlow from "../lib/SetupFlow.svelte";
     import SetupDevice from "../lib/SetupDevice.svelte";
@@ -18,7 +15,6 @@
     import ScrollArea from "../lib/ScrollArea.svelte";
     import { getSearchTokens, tokenSearch } from "../lib/functions";
     import OverlayMenuService from "../lib/OverlayMenu/OverlayMenuService";
-    import InlineEditor from "../lib/InlineEditor.svelte";
 
 
     let tableCols = [
@@ -280,7 +276,7 @@
               num+="u";
 
         }
-        //num += flow.num;
+        num += flow.num;
         return num;
       }
 
@@ -492,39 +488,6 @@
       }
 
 
-
-
-
-      function deleteElement(devId = "", flowId = ""){
-        // TODO feedback....
-        // TODO add Info for Dynamic, they will be back in a minute
-        ServerConnector.post("crosspoint",{action:"delete", devId:devId, flowId:flowId}).then(()=>{}).catch(()=>{});
-      }
-
-
-      function moveDevice(devId = "", num:any = 0){
-        let newNum = Number.parseInt(""+num);
-        ServerConnector.post("crosspoint",{action:"movedevice", devId:devId, newNum:newNum}).then(()=>{}).catch(()=>{});
-      }
-
-      function moveFlow(devId = "", flow:any, num:any = 0){
-        let flowType = flow.type;
-        let newNum = Number.parseInt(""+num);
-        ServerConnector.post("crosspoint",{action:"moveflow", devId:devId, type:flowType, flowId:flow.id, newNum:newNum}).then(()=>{}).catch(()=>{});
-      }
-
-
-      function updateMulticast(flowId:string, index:number, multicast:string){
-        
-        ServerConnector.post("setMulticast",{ id:flowId, data:{
-          legs:[{index:index, multicast:multicast}]
-        }}).then(()=>{}).catch(()=>{});
-      }
-
-
-
-
-
   </script>
   
 
@@ -614,7 +577,7 @@
                     </td>
                 {/if}
             {/each}
-            <td> </td>
+            <td> Settings</td>
         </tr>
     </thead>
     <tbody>
@@ -626,7 +589,7 @@
                     <td class="{(col.fixed ? "data-table-fixed-col":"")}" style="{col.fixedOffset ? "left:"+col.fixedOffset+"px;":""} {col.width ? "min-width:"+col.width+"px;":""}">
 
                             {#if col.id == "num"}
-                              <InlineEditor width="6" value={dev.num} on:update={(e)=>{moveDevice(dev.id, e.detail)}}></InlineEditor>
+                            <span>{dev.num}</span>
                             {/if}
 
                             {#if col.id == "available"}
@@ -651,13 +614,9 @@
                         </td>
                     {/if}
                 {/each}
-                <td class="data-table-action-buttons">
+                <td>
                   <button class="btn btn-circle" on:click={()=>{openDeviceEditor(dev.id)}}>
                     <Icon src={Cog}></Icon>
-                  </button>
-
-                  <button class="btn btn-circle" on:click={()=>{deleteElement(dev.id)}}>
-                    <Icon src={Trash}></Icon>
                   </button>
                 </td>
             </tr>
@@ -671,11 +630,11 @@
                                 <td class="{(col.fixed ? "data-table-fixed-col":"")}" style="{col.fixedOffset ? "left:"+col.fixedOffset+"px;":""} {col.width ? "min-width:"+col.width+"px;":""}">
 
                                     {#if col.id == "num"}
-                                      <InlineEditor width="6" label={dev.num + "." + renderFlowNum(flow) } value={flow.num} on:update={(e)=>{moveFlow(dev.id, flow, e.detail)}}></InlineEditor>
+                                    &nbsp;&nbsp;&nbsp;{dev.num + "." + renderFlowNum(flow) }
                                     {/if}
 
                                     {#if col.id == "available"}
-                                    <div class="badge badge-{ flow.available ? (flow.manifestOk && flow.active ? "success" : "warning") : "error"} badge-sm"></div>
+                                    <div class="badge badge-{ flow.available ? (flow.manifestOk ? "success" : "warning") : "error"} badge-sm"></div>
                                     {/if}
 
                                     {#if col.id == "name"}
@@ -719,14 +678,9 @@
                                       <span>
                                         {renderId(flow.id)}
                                       </span>
-                                      {#if flow.active && !flow.manifestOk}
-                                        <span class="text-error">No manifest loaded</span>
+                                      {#if !flow.manifestOk}
+                                        <span class="text-error">No Manifest Loaded</span>
                                       {/if}
-
-                                      {#if !flow.active}
-                                        <span class="text-error">Not active</span>
-                                      {/if}
-
                                     {/if}
 
                                     {#if col.id == "sync"}
@@ -740,12 +694,10 @@
 
 
                                     {#if col.id == "flow"}
-                                      {#each getSenderSettings(flow) as settings, index}
+                                      {#each getSenderSettings(flow) as settings}
                                         <div>
                                           <!--<span>{settings.name} : </span>-->
-                                          <InlineEditor width="10" label="Dst: " value={settings.dstIp} on:update={(e)=>{updateMulticast(flow.id, index, e.detail)}}></InlineEditor>
-                                          
-                                          <span>Src: {settings.srcIp}</span>
+                                          <span>Dst: {settings.dstIp} Src: {settings.srcIp}</span>
                                         </div>
                                       {/each}
                                     {/if}
@@ -756,10 +708,6 @@
                         <td>
                           <button class="btn btn-circle" on:click={()=>{openFlowEditor(flow.id)}}>
                             <Icon src={Cog}></Icon>
-                          </button>
-
-                          <button class="btn btn-circle" on:click={()=>{deleteElement(dev.id, flow.id)}}>
-                            <Icon src={Trash}></Icon>
                           </button>
                         </td>
                     </tr>
@@ -774,10 +722,10 @@
                             <td class="{(col.fixed ? "data-table-fixed-col":"")}" style="{col.fixedOffset ? "left:"+col.fixedOffset+"px;":""} {col.width ? "min-width:"+col.width+"px;":""}">
 
                                     {#if col.id == "num"}
-                                      <InlineEditor width="6" label={dev.num + "." + renderFlowNum(flow) } value={flow.num} on:update={(e)=>{moveFlow(dev.id, flow, e.detail)}}></InlineEditor>
+                                    &nbsp;&nbsp;&nbsp;{dev.num + "." + renderFlowNum(flow) }
                                     {/if}
 
-                                    {#if col.id == "available"}
+                                    {#if col.id == "available_flow"}
                                     <div class="badge badge-{ flow.available ? "success" : "error"} badge-sm"></div>
                                     {/if}
 
@@ -820,10 +768,6 @@
                           <button class="btn btn-circle">
                             <Icon src={Pencil}></Icon>
                           </button>
-
-                          <button class="btn btn-circle" on:click={()=>{deleteElement(dev.id, flow.id)}}>
-                            <Icon src={Trash}></Icon>
-                          </button>
                         </td>
                     </tr>
                   {/each}
@@ -862,7 +806,7 @@
       <h3 class="font-bold text-lg">Change Alias</h3>
       <span>Source Name: {labelModalName}</span><br/>
       <span>Alias: {labelModalAlias}</span>
-      <input on:keypress={(e)=>{if(e.keyCode == 13) changeLabelSend()}} bind:this={labelModalInput} bind:value={labelModalValue} type="text" placeholder="Type here" class="input input-bordered w-full max-w-xs" />
+        <input on:keypress={(e)=>{if(e.keyCode == 13) changeLabelSend()}} bind:this={labelModalInput} bind:value={labelModalValue} type="text" placeholder="Type here" class="input input-bordered w-full max-w-xs" />
       <div class="modal-action">
         <form method="dialog">
           <!-- if there is a button in form, it will close the modal -->
