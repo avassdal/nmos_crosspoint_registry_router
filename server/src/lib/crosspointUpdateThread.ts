@@ -424,40 +424,10 @@ class CrosspointUpdateThread{
 
                 let groupId = "nmos_"+send.device_id;
                 let groupLabel = "";
-
-                if(this.nmosUseGroupHints && send.hasOwnProperty('tags') && send.tags.hasOwnProperty("urn:x-nmos:tag:grouphint/v1.0") && Array.isArray(send.tags["urn:x-nmos:tag:grouphint/v1.0"]) && send.tags["urn:x-nmos:tag:grouphint/v1.0"].length > 0){
-                    let group = (send.tags["urn:x-nmos:tag:grouphint/v1.0"][0] as string).split(':')[0];
-                    if(this.nmosState.devices.hasOwnProperty(send.device_id)){
-
-                        // If device is new, check naming
-                        let groupLabels:string[] = [];
-                        this.nmosState.devices[send.device_id].senders.forEach((id:string)=>{
-                            if(this.nmosState.senders[id]){
-                                let otherSender = this.nmosState.senders[id]
-                                if(otherSender.hasOwnProperty('tags') && otherSender.tags.hasOwnProperty("urn:x-nmos:tag:grouphint/v1.0") && Array.isArray(otherSender.tags["urn:x-nmos:tag:grouphint/v1.0"]) && otherSender.tags["urn:x-nmos:tag:grouphint/v1.0"].length > 0  ) {
-                                    let otherGroup = (otherSender.tags["urn:x-nmos:tag:grouphint/v1.0"][0] as string).split(':')[0];
-                                    if(!groupLabels.includes(otherGroup)){
-                                        groupLabels.push(otherGroup);
-                                    }
-                                }
-                            }
-                            
-                        })
-                        if(groupLabels.length > 1){
-                            groupLabel = this.nmosState.devices[send.device_id].label + " - " + group;
-                        }else{
-                            groupLabel = this.nmosState.devices[send.device_id].label;
-                        }
-                        
-                    }else{
-                        groupLabel = group;
-                    }
+                if(this.nmosState.devices.hasOwnProperty(send.device_id)){
+                    groupLabel = this.nmosState.devices[send.device_id].label;
                 }else{
-                    if(this.nmosState.devices.hasOwnProperty(send.device_id)){
-                        groupLabel = this.nmosState.devices[send.device_id].label;
-                    }else{
-                        groupLabel = "UNKNOWN";
-                    }
+                    groupLabel = "UNKNOWN";
                 }
 
                 
@@ -540,40 +510,10 @@ class CrosspointUpdateThread{
 
                 let groupId = "nmos_"+recv.device_id;
                 let groupLabel = "";
-
-                if(this.nmosUseGroupHints && recv.hasOwnProperty('tags') && recv.tags.hasOwnProperty("urn:x-nmos:tag:grouphint/v1.0") && Array.isArray(recv.tags["urn:x-nmos:tag:grouphint/v1.0"]) && recv.tags["urn:x-nmos:tag:grouphint/v1.0"].length > 0){
-                    let group = (recv.tags["urn:x-nmos:tag:grouphint/v1.0"][0] as string).split(':')[0];
-                    if(this.nmosState.devices.hasOwnProperty(recv.device_id)){
-
-                        // If device is new, check naming
-                        let groupLabels:string[] = [];
-                        this.nmosState.devices[recv.device_id].receivers.forEach((id:string)=>{
-                            if(this.nmosState.receivers[id]){
-                                let otherReceiver = this.nmosState.receivers[id]
-                                if(otherReceiver.hasOwnProperty('tags') && otherReceiver.tags.hasOwnProperty("urn:x-nmos:tag:grouphint/v1.0") && Array.isArray(otherReceiver.tags["urn:x-nmos:tag:grouphint/v1.0"]) && otherReceiver.tags["urn:x-nmos:tag:grouphint/v1.0"].length > 0  ) {
-                                    let otherGroup = (otherReceiver.tags["urn:x-nmos:tag:grouphint/v1.0"][0] as string).split(':')[0];
-                                    if(!groupLabels.includes(otherGroup)){
-                                        groupLabels.push(otherGroup);
-                                    }
-                                }
-                            }
-                            
-                        })
-                        if(groupLabels.length > 1){
-                            groupLabel = this.nmosState.devices[recv.device_id].label + " - " + group;
-                        }else{
-                            groupLabel = this.nmosState.devices[recv.device_id].label;
-                        }
-
-                    }else{
-                        groupLabel = group;
-                    }
+                if(this.nmosState.devices.hasOwnProperty(recv.device_id)){
+                    groupLabel = this.nmosState.devices[recv.device_id].label;
                 }else{
-                    if(this.nmosState.devices.hasOwnProperty(recv.device_id)){
-                        groupLabel = this.nmosState.devices[recv.device_id].label ;
-                    }else{
-                        groupLabel = "Unknown";
-                    }
+                    groupLabel = "Unknown";
                 }
 
                 
