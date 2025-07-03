@@ -205,19 +205,27 @@ class _ServerConnector {
       this.disconnect();
 
       this.wsUrl = '';
-      if (window.location.protocol == 'https') {
+      if (window.location.protocol === 'https:') {
           this.wsUrl += 'wss://';
       } else {
           this.wsUrl += 'ws://';
       }
       this.wsUrl += window.location.hostname;
+
+      let port = window.location.port;
+
+      if (import.meta.env.VITE_WS_PORT) {
+        port = import.meta.env.VITE_WS_PORT;
+      }
+
       if (
-          (window.location.port == '443' && window.location.protocol == 'https') ||
-          (window.location.port == '80' && window.location.protocol == 'http')
+          (port == '443' && window.location.protocol === 'https:') ||
+          (port == '80' && window.location.protocol === 'http:')
       ) {
           //port is default no changes
       } else {
-          this.wsUrl += ':' + window.location.port;
+        if(port)
+          this.wsUrl += ':' + port;
       }
       this.wsUrl += '/sync/';
 
