@@ -28,7 +28,11 @@ ZT_CONNECTED=false
 # First, wait for the network to appear in the list
 while [ $COUNTER -lt $MAX_TRIES ] && [ "$ZT_CONNECTED" != "true" ]; do
   # Check if the network is listed
-  NETWORK_INFO=$(zerotier-cli listnetworks | grep $ZT_NETWORK || echo "")
+  if [ -z "$ZT_NETWORK" ]; then
+    NETWORK_INFO=""
+  else
+    NETWORK_INFO=$(zerotier-cli listnetworks | grep "$ZT_NETWORK" || true)
+  fi
   
   if [ -z "$NETWORK_INFO" ]; then
     printf "Network not found yet. Waiting... ($COUNTER/$MAX_TRIES)\n"
