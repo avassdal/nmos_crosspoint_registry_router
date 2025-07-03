@@ -403,10 +403,9 @@ class CrosspointUpdateThread{
     updateShadow(){
         let changed = false;
 
-        for(let devId in this.crosspointShadow){
-            if(devId.startsWith("nmosgrp_")){
-                this.crosspointShadow[devId].available = false;
-            }
+        // Mark all devices as unavailable before processing the new state
+        for (const devId in this.crosspointShadow.devices) {
+            this.crosspointShadow.devices[devId].available = false;
         }
         if(this.nmosState){
             // NMOS Senders
@@ -423,14 +422,11 @@ class CrosspointUpdateThread{
             for (let s of list) {
                 let send:any = s;
 
-                let groupId = "";
-                let groupHint = false;
+                let groupId = "nmos_"+send.device_id;
                 let groupLabel = "";
 
                 if(this.nmosUseGroupHints && send.hasOwnProperty('tags') && send.tags.hasOwnProperty("urn:x-nmos:tag:grouphint/v1.0") && Array.isArray(send.tags["urn:x-nmos:tag:grouphint/v1.0"]) && send.tags["urn:x-nmos:tag:grouphint/v1.0"].length > 0){
                     let group = (send.tags["urn:x-nmos:tag:grouphint/v1.0"][0] as string).split(':')[0];
-                    groupId = 'nmosgrp_' +md5(group+send.device_id);
-                    groupHint = true;
                     if(this.nmosState.devices.hasOwnProperty(send.device_id)){
 
                         // If device is new, check naming
@@ -457,7 +453,6 @@ class CrosspointUpdateThread{
                         groupLabel = group;
                     }
                 }else{
-                    groupId = "nmos_"+send.device_id;
                     if(this.nmosState.devices.hasOwnProperty(send.device_id)){
                         groupLabel = this.nmosState.devices[send.device_id].label;
                     }else{
@@ -474,6 +469,7 @@ class CrosspointUpdateThread{
                         num: this.nextDeviceNum++,
                         order:-1,
                         name:groupLabel,
+                        available: true, // Initialize as available
                         senders:{ audio:{},audiochannel:{},video:{},data:{},websocket:{},mqtt:{}, unknown:{} },
                         receivers:{ audio:{},audiochannel:{},video:{},data:{},websocket:{},mqtt:{}, unknown:{} }
                     }
@@ -542,23 +538,16 @@ class CrosspointUpdateThread{
             for (let r of list) {
                 let recv:any = r;
 
-                let groupId = "";
-                let groupHint = false;
+                let groupId = "nmos_"+recv.device_id;
                 let groupLabel = "";
 
                 if(this.nmosUseGroupHints && recv.hasOwnProperty('tags') && recv.tags.hasOwnProperty("urn:x-nmos:tag:grouphint/v1.0") && Array.isArray(recv.tags["urn:x-nmos:tag:grouphint/v1.0"]) && recv.tags["urn:x-nmos:tag:grouphint/v1.0"].length > 0){
                     let group = (recv.tags["urn:x-nmos:tag:grouphint/v1.0"][0] as string).split(':')[0];
-                    let flowNameFromGroup = (recv.tags["urn:x-nmos:tag:grouphint/v1.0"][0] as string).split(':')[1];
-                    groupId = 'nmosgrp_' +md5(group+recv.device_id);
-                    groupHint = true;
                     if(this.nmosState.devices.hasOwnProperty(recv.device_id)){
-
-
-
 
                         // If device is new, check naming
                         let groupLabels:string[] = [];
-                        this.nmosState.devices[recv.device_id].senders.forEach((id:string)=>{
+                        this.nmosState.devices[recv.device_id].receivers.forEach((id:string)=>{
                             if(this.nmosState.receivers[id]){
                                 let otherReceiver = this.nmosState.receivers[id]
                                 if(otherReceiver.hasOwnProperty('tags') && otherReceiver.tags.hasOwnProperty("urn:x-nmos:tag:grouphint/v1.0") && Array.isArray(otherReceiver.tags["urn:x-nmos:tag:grouphint/v1.0"]) && otherReceiver.tags["urn:x-nmos:tag:grouphint/v1.0"].length > 0  ) {
@@ -580,7 +569,6 @@ class CrosspointUpdateThread{
                         groupLabel = group;
                     }
                 }else{
-                    groupId = "nmos_"+recv.device_id;
                     if(this.nmosState.devices.hasOwnProperty(recv.device_id)){
                         groupLabel = this.nmosState.devices[recv.device_id].label ;
                     }else{
@@ -597,6 +585,7 @@ class CrosspointUpdateThread{
                         num: this.nextDeviceNum++,
                         order:-1,
                         name:groupLabel,
+                        available: true, // Initialize as available
                         senders:{ audio:{},audiochannel:{},video:{},data:{},websocket:{},mqtt:{}, unknown:{} },
                         receivers:{ audio:{},audiochannel:{},video:{},data:{},websocket:{},mqtt:{}, unknown:{} }
                     }
