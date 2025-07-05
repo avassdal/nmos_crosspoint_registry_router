@@ -7,6 +7,3 @@ server/public/*
 server/log/*
 _tempFiles/*
 nmos_secrets.yml
-# misc
-.DS_Store
-scripts/q-sys-crosspoint-control.lua

@@ -619,7 +619,6 @@ export interface CrosspointConnectionSenderInfo {
 }
 
 export interface CrosspointShadowDevice {
-    available: boolean;
     id:string,
     num:number,
     order:number,
@@ -650,5 +649,3 @@ export interface CrosspointShadowState {
     }
 
 }
-
-

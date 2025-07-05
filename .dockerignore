@@ -1,22 +1,5 @@
 .git
 .gitignore
-
-# Ignore node_modules folders
 **/node_modules
-
-# Ignore build artifacts
-**/dist
-**/build
-
-# Ignore logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Ignore OS-specific files
-.DS_Store
-Thumbs.db
-
-# Ignore IDE and editor directories
 .vscode
+

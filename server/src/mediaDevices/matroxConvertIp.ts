@@ -194,6 +194,18 @@ export default class MediaDevMatroxConvertIp {
             console.error("Error reading from file: ./config/mediadev_matroxcip/matroxcip.json");
         }
 
+        if(process.env.MATROX_CIP_USER)
+        {
+            this.config.user = process.env.MATROX_CIP_USER;
+            SyncLog.log("info", "matroxcip", "Using username from environment variable MATROX_CIP_USER");
+        }
+
+        if(process.env.MATROX_CIP_PASSWORD)
+        {
+            this.config.password = process.env.MATROX_CIP_PASSWORD;
+            SyncLog.log("info", "matroxcip", "Using password from environment variable MATROX_CIP_PASSWORD");
+        }
+
 
         
 

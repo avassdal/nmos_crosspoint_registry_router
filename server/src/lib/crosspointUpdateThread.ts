@@ -403,9 +403,10 @@ class CrosspointUpdateThread{
     updateShadow(){
         let changed = false;
 
-        // Mark all devices as unavailable before processing the new state
-        for (const devId in this.crosspointShadow.devices) {
-            this.crosspointShadow.devices[devId].available = false;
+        for(let devId in this.crosspointShadow){
+            if(devId.startsWith("nmosgrp_")){
+                this.crosspointShadow[devId].available = false;
+            }
         }
         if(this.nmosState){
             // NMOS Senders
@@ -422,12 +423,46 @@ class CrosspointUpdateThread{
             for (let s of list) {
                 let send:any = s;
 
-                let groupId = "nmos_"+send.device_id;
+                let groupId = "";
+                let groupHint = false;
                 let groupLabel = "";
-                if(this.nmosState.devices.hasOwnProperty(send.device_id)){
-                    groupLabel = this.nmosState.devices[send.device_id].label;
+
+                if(this.nmosUseGroupHints && send.hasOwnProperty('tags') && send.tags.hasOwnProperty("urn:x-nmos:tag:grouphint/v1.0") && Array.isArray(send.tags["urn:x-nmos:tag:grouphint/v1.0"]) && send.tags["urn:x-nmos:tag:grouphint/v1.0"].length > 0){
+                    let group = (send.tags["urn:x-nmos:tag:grouphint/v1.0"][0] as string).split(':')[0];
+                    groupId = 'nmosgrp_' +md5(group+send.device_id);
+                    groupHint = true;
+                    if(this.nmosState.devices.hasOwnProperty(send.device_id)){
+
+                        // If device is new, check naming
+                        let groupLabels:string[] = [];
+                        this.nmosState.devices[send.device_id].senders.forEach((id:string)=>{
+                            if(this.nmosState.senders[id]){
+                                let otherSender = this.nmosState.senders[id]
+                                if(otherSender.hasOwnProperty('tags') && otherSender.tags.hasOwnProperty("urn:x-nmos:tag:grouphint/v1.0") && Array.isArray(otherSender.tags["urn:x-nmos:tag:grouphint/v1.0"]) && otherSender.tags["urn:x-nmos:tag:grouphint/v1.0"].length > 0  ) {
+                                    let otherGroup = (otherSender.tags["urn:x-nmos:tag:grouphint/v1.0"][0] as string).split(':')[0];
+                                    if(!groupLabels.includes(otherGroup)){
+                                        groupLabels.push(otherGroup);
+                                    }
+                                }
+                            }
+                            
+                        })
+                        if(groupLabels.length > 1){
+                            groupLabel = this.nmosState.devices[send.device_id].label + " - " + group;
+                        }else{
+                            groupLabel = this.nmosState.devices[send.device_id].label;
+                        }
+                        
+                    }else{
+                        groupLabel = group;
+                    }
                 }else{
-                    groupLabel = "UNKNOWN";
+                    groupId = "nmos_"+send.device_id;
+                    if(this.nmosState.devices.hasOwnProperty(send.device_id)){
+                        groupLabel = this.nmosState.devices[send.device_id].label;
+                    }else{
+                        groupLabel = "UNKNOWN";
+                    }
                 }
 
                 
@@ -439,7 +474,6 @@ class CrosspointUpdateThread{
                         num: this.nextDeviceNum++,
                         order:-1,
                         name:groupLabel,
-                        available: true, // Initialize as available
                         senders:{ audio:{},audiochannel:{},video:{},data:{},websocket:{},mqtt:{}, unknown:{} },
                         receivers:{ audio:{},audiochannel:{},video:{},data:{},websocket:{},mqtt:{}, unknown:{} }
                     }
@@ -508,12 +542,50 @@ class CrosspointUpdateThread{
             for (let r of list) {
                 let recv:any = r;
 
-                let groupId = "nmos_"+recv.device_id;
+                let groupId = "";
+                let groupHint = false;
                 let groupLabel = "";
-                if(this.nmosState.devices.hasOwnProperty(recv.device_id)){
-                    groupLabel = this.nmosState.devices[recv.device_id].label;
+
+                if(this.nmosUseGroupHints && recv.hasOwnProperty('tags') && recv.tags.hasOwnProperty("urn:x-nmos:tag:grouphint/v1.0") && Array.isArray(recv.tags["urn:x-nmos:tag:grouphint/v1.0"]) && recv.tags["urn:x-nmos:tag:grouphint/v1.0"].length > 0){
+                    let group = (recv.tags["urn:x-nmos:tag:grouphint/v1.0"][0] as string).split(':')[0];
+                    let flowNameFromGroup = (recv.tags["urn:x-nmos:tag:grouphint/v1.0"][0] as string).split(':')[1];
+                    groupId = 'nmosgrp_' +md5(group+recv.device_id);
+                    groupHint = true;
+                    if(this.nmosState.devices.hasOwnProperty(recv.device_id)){
+
+
+
+
+                        // If device is new, check naming
+                        let groupLabels:string[] = [];
+                        this.nmosState.devices[recv.device_id].senders.forEach((id:string)=>{
+                            if(this.nmosState.receivers[id]){
+                                let otherReceiver = this.nmosState.receivers[id]
+                                if(otherReceiver.hasOwnProperty('tags') && otherReceiver.tags.hasOwnProperty("urn:x-nmos:tag:grouphint/v1.0") && Array.isArray(otherReceiver.tags["urn:x-nmos:tag:grouphint/v1.0"]) && otherReceiver.tags["urn:x-nmos:tag:grouphint/v1.0"].length > 0  ) {
+                                    let otherGroup = (otherReceiver.tags["urn:x-nmos:tag:grouphint/v1.0"][0] as string).split(':')[0];
+                                    if(!groupLabels.includes(otherGroup)){
+                                        groupLabels.push(otherGroup);
+                                    }
+                                }
+                            }
+                            
+                        })
+                        if(groupLabels.length > 1){
+                            groupLabel = this.nmosState.devices[recv.device_id].label + " - " + group;
+                        }else{
+                            groupLabel = this.nmosState.devices[recv.device_id].label;
+                        }
+
+                    }else{
+                        groupLabel = group;
+                    }
                 }else{
-                    groupLabel = "Unknown";
+                    groupId = "nmos_"+recv.device_id;
+                    if(this.nmosState.devices.hasOwnProperty(recv.device_id)){
+                        groupLabel = this.nmosState.devices[recv.device_id].label ;
+                    }else{
+                        groupLabel = "Unknown";
+                    }
                 }
 
                 
@@ -525,7 +597,6 @@ class CrosspointUpdateThread{
                         num: this.nextDeviceNum++,
                         order:-1,
                         name:groupLabel,
-                        available: true, // Initialize as available
                         senders:{ audio:{},audiochannel:{},video:{},data:{},websocket:{},mqtt:{}, unknown:{} },
                         receivers:{ audio:{},audiochannel:{},video:{},data:{},websocket:{},mqtt:{}, unknown:{} }
                     }
@@ -668,7 +739,7 @@ class CrosspointUpdateThread{
                                     this.nmosState.sources.hasOwnProperty(this.nmosState.flows[this.nmosState.senders[nmosId].flow_id].source_id)
                                 ){
                                     source.available = true;
-                                    source.format = this.getNmosSenderForamt(nmosId);
+                                    source.format = this.getNmosSenderFormat(nmosId);
                                     source.bitrate = this.getNmosSenderBitrate(nmosId);
                                     if(this.nmosState.senders[nmosId].interface_bindings?.length > 1){
                                         source.capabilities.dash7 = true;
@@ -883,7 +954,7 @@ class CrosspointUpdateThread{
             return {v:bitrate,hint:bitrateHint};
     }
 
-    getNmosSenderForamt(senderId: string) {
+    getNmosSenderFormat(senderId: string) {
         let info = '';
         try {
           let sender = this.nmosState.senders[senderId];
@@ -1059,7 +1130,7 @@ class CrosspointUpdateThread{
 
                     
 
-                    if(p.destination_ip == "" && this.nmosState.sneders.hasOwnProperty(senderId) && this.nmosState.flows.hasOwnProperty(this.nmosState.senders[senderId].flow_id) ){
+                    if(p.destination_ip == "" && this.nmosState.senders.hasOwnProperty(senderId) && this.nmosState.flows.hasOwnProperty(this.nmosState.senders[senderId].flow_id) ){
                         if(!workingOnLeg){
                             // One leg at a time
                             workingOnLeg = true;
@@ -1222,7 +1293,7 @@ class CrosspointUpdateThread{
         let mode = "primary"
         if(index == 0){
             mode = "primary"
-        }else if(index = 2){
+        }else if(index == 1){
             mode = "secondary"
         }else{
             return "";
@@ -1302,11 +1373,3 @@ class CrosspointUpdateThread{
 }
 
 let updateThread = new CrosspointUpdateThread();
-
-
-    
-
-    
-
-
-
