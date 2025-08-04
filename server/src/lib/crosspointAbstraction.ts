@@ -137,6 +137,8 @@ const md5 = data => crypto.createHash('md5').update(data).digest("hex")
 
     makeConnection(data:any){
         return new Promise(async(resolve, reject) => {
+            // Debug logging to track makeConnection calls
+            console.log("[DEBUG] makeConnection called with:", JSON.stringify(data, null, 2));
 
             let preview = true;
             let prepare = false;
@@ -169,6 +171,8 @@ const md5 = data => crypto.createHash('md5').update(data).digest("hex")
                     // Disconnect
                     disconnect = true
                 }
+                
+                console.log("[DEBUG] Processing connection:", {source, destination, disconnect});
 
                 let srcFlows:any[] = [];
                 let dstFlows:any[] = [];
@@ -200,20 +204,27 @@ const md5 = data => crypto.createHash('md5').update(data).digest("hex")
                     sourceDeviceOnly = true;
                 }
 
+                console.log("[DEBUG] Looking for source device:", {sourceDevice, sourceFlowType, sourceFlow, sourceDeviceOnly});
+                console.log("[DEBUG] Available devices:", this.crosspointState.devices.map(d => ({num: d.num, name: d.name, alias: d.alias})));
+                
                 for(let dev of this.crosspointState.devices){
-                    if(dev.num == sourceDevice){
+                    // Support name-based addressing: numeric ID, device name, or alias
+                    if(dev.num == sourceDevice || dev.name == sourceDevice || dev.alias == sourceDevice){
+                        console.log("[DEBUG] Found matching source device:", {num: dev.num, name: dev.name, alias: dev.alias});
                         srcDev = dev;
                         for(let type in dev.senders){
                             if(type == sourceFlowType || sourceDeviceOnly){
                                 for(let flow of dev.senders[type]){
                                     if(flow.num == sourceFlow || sourceDeviceOnly){
                                         srcFlows.push(flow);
+                                        console.log("[DEBUG] Added source flow:", {type, flowNum: flow.num, flowId: flow.id});
                                     }
                                 }
                             }
                         }
                     }
                 }
+                console.log("[DEBUG] Source device search complete:", {srcDev: srcDev ? {num: srcDev.num, name: srcDev.name} : null, srcFlowsCount: srcFlows.length});
 
 
                 // Select all destination Flows
@@ -243,25 +254,35 @@ const md5 = data => crypto.createHash('md5').update(data).digest("hex")
                     destinationDeviceOnly = true;
                 }
 
+                console.log("[DEBUG] Looking for destination device:", {destinationDevice, destinationFlowType, destinationFlow, destinationDeviceOnly});
+                
                 for(let dev of this.crosspointState.devices){
-                    if(dev.num == destinationDevice){
-
+                    // Support name-based addressing: numeric ID, device name, or alias
+                    if(dev.num == destinationDevice || dev.name == destinationDevice || dev.alias == destinationDevice){
+                        console.log("[DEBUG] Found matching destination device:", {num: dev.num, name: dev.name, alias: dev.alias});
                         dstDev = dev;
                         for(let type in dev.receivers){
                             if(type == destinationFlowType || destinationDeviceOnly){
                                 for(let flow of dev.receivers[type]){
                                     if(flow.num == destinationFlow || destinationDeviceOnly){
                                         dstFlows.push(flow);
+                                        console.log("[DEBUG] Added destination flow:", {type, flowNum: flow.num, flowId: flow.id});
                                     }
                                 }
                             }
                         }
                     }
                 }
+                console.log("[DEBUG] Destination device search complete:", {dstDev: dstDev ? {num: dstDev.num, name: dstDev.name} : null, dstFlowsCount: dstFlows.length});
 
 
-                //console.log("Sources:", srcFlows)
-                //console.log("Destiantions:", dstFlows)
+                console.log("[DEBUG] Flow matching results:", {
+                    srcFlowsCount: srcFlows.length,
+                    dstFlowsCount: dstFlows.length,
+                    disconnect,
+                    willProcessConnection: (srcFlows.length > 0 || disconnect) && dstFlows.length > 0
+                });
+                
                 if((srcFlows.length > 0 || disconnect) && dstFlows.length > 0){
                     
                         // Connection Matcher
