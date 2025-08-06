@@ -317,6 +317,57 @@ export default class MediaDevMatroxConvertIp {
             });
         });
 
+        server.addRoute("POST", "matroxcip_toggleptp","global", (client: WebsocketClient, query:string[], postData: any) => {
+            return new Promise((resolve, reject) => {
+                this.togglePtp(postData.sn, postData.enabled).then(()=>{
+                    resolve({});    
+                }).catch((e)=>{
+                    reject({status:400, message:e.message});
+                })
+                
+            });
+        });
+
+        server.addRoute("GET", "matroxcip_ptpenableall","global", (client: WebsocketClient, query:string[]) => {
+            return new Promise((resolve, reject) => {
+                this.ptpEnableAll().then(()=>{
+                    resolve({});    
+                }).catch((e)=>{
+                    reject({status:400, message:e.message});
+                })
+            });
+        });
+
+        server.addRoute("GET", "matroxcip_ptpdisableall","global", (client: WebsocketClient, query:string[]) => {
+            return new Promise((resolve, reject) => {
+                this.ptpDisableAll().then(()=>{
+                    resolve({});    
+                }).catch((e)=>{
+                    reject({status:400, message:e.message});
+                })
+            });
+        });
+
+        server.addRoute("POST", "matroxcip_restart","global", (client: WebsocketClient, query:string[], postData: any) => {
+            return new Promise((resolve, reject) => {
+                this.restartDevice(postData.sn).then(()=>{
+                    resolve({});    
+                }).catch((e)=>{
+                    reject({status:400, message:e.message});
+                })
+            });
+        });
+
+        server.addRoute("GET", "matroxcip_restartall","global", (client: WebsocketClient, query:string[]) => {
+            return new Promise((resolve, reject) => {
+                this.restartAll().then(()=>{
+                    resolve({});    
+                }).catch((e)=>{
+                    reject({status:400, message:e.message});
+                })
+            });
+        });
+
         server.addRoute("POST", "matroxcip_batchjob","global", (client: WebsocketClient, query:string[], postData: any) => {
             return new Promise((resolve, reject) => {
                 let reboot = false;
@@ -714,6 +765,89 @@ export default class MediaDevMatroxConvertIp {
         },2000)
     }
 
+    // Web Accessible
+    async togglePtp(sn:string, enabled:boolean){
+        let ipList:string[] = [];
+        let cip;
+        if(this.state.devices.hasOwnProperty(sn)){
+            ipList = this.state.devices[sn].ipList
+            cip = this.state.devices[sn]
+        }else{
+            throw new Error("Device not found.")
+        }
+
+        let context = await this.apiRequest(ipList, sn, "GET", "/device/settings/context");
+        if(!context){
+            throw new Error("Can not get Context.");
+        }
+        let data = context.ptpSettings;
+        data.isEnabled = enabled;
+        let result = await this.apiRequest(ipList, sn, "POST", "/device/settings/ptp", data);
+
+        setTimeout(()=>{
+            this.reloadData(ipList,sn,cip)
+        },2000)
+    }
+
+    // Web Accessible
+    async ptpEnableAll(){
+        for(let sn in this.state.devices){
+            try{
+                await this.togglePtp(sn, true);
+            }catch(e){
+                SyncLog.log("error", "MatroxCIP", `Failed to enable PTP on device ${sn}: ${e.message}`);
+            }
+        }
+    }
+
+    // Web Accessible
+    async ptpDisableAll(){
+        for(let sn in this.state.devices){
+            try{
+                await this.togglePtp(sn, false);
+            }catch(e){
+                SyncLog.log("error", "MatroxCIP", `Failed to disable PTP on device ${sn}: ${e.message}`);
+            }
+        }
+    }
+
+    // Web Accessible
+    async restartDevice(sn:string){
+        let ipList:string[] = [];
+        let cip;
+        if(this.state.devices.hasOwnProperty(sn)){
+            ipList = this.state.devices[sn].ipList
+            cip = this.state.devices[sn]
+        }else{
+            throw new Error("Device not found.")
+        }
+
+        await this.apiRequest(ipList, sn, "POST", "/device/reboot", {"maintenanceMode":false}, true);
+        
+        // Mark device as loading since it will be rebooting
+        cip.loading = true;
+        this.updateQuickState();
+        this.syncList.setState(this.state);
+        
+        // Reload device data after reboot delay
+        setTimeout(()=>{
+            this.reloadData(ipList,sn,cip)
+        },10000) // 10 second delay for reboot
+    }
+
+    // Web Accessible
+    async restartAll(){
+        for(let sn in this.state.devices){
+            try{
+                await this.restartDevice(sn);
+                // Add delay between device restarts to avoid network overload
+                await sleep(1000);
+            }catch(e){
+                SyncLog.log("error", "MatroxCIP", `Failed to restart device ${sn}: ${e.message}`);
+            }
+        }
+    }
+
 
     async changeResolution(sn:string, name:string){
         let ipList:string[] = [];
@@ -961,8 +1095,10 @@ export default class MediaDevMatroxConvertIp {
         let status;
         let caps;
         try{
+            SyncLog.log("debug", "MatroxCIP", `Device ${sn}: Starting API calls to IPs: ${ipList.join(', ')}`);
             context = await this.apiRequest(ipList, sn, "GET", "/device/settings/context", {}, force);
             status = await this.apiRequest(ipList, sn, "GET", "/device/status", {}, force);
+            SyncLog.log("debug", "MatroxCIP", `Device ${sn}: API calls completed. Context: ${context ? 'received' : 'null'}, Status: ${status ? 'received' : 'null'}`);
             cip.unreachable = false;
             if(context == "duplicate" || status == "duplicate"){
                 cip.sessionConflict = true;
@@ -972,6 +1108,7 @@ export default class MediaDevMatroxConvertIp {
                 if(context && status){
                     try{
                         cip.firmwareVersion = context.header.verSW;
+                        SyncLog.log("debug", "MatroxCIP", `Device ${sn}: Processing SKU: ${context.header.sku}`);
                         switch(context.header.sku){
                             case "fpga2110_hdmi_unc_jpegxs_sfp_10G_rx":
                                 cip.firmwareMode = "HDMI JPEG-XS 10G RX"
@@ -1072,12 +1209,30 @@ export default class MediaDevMatroxConvertIp {
                                 cip.hasEdid = false;
                             break;
 
+                            case "fpga2110_hdmi_colibri_rj45_1_2G5_rx":
+                                cip.firmwareMode = "HDMI 2.5G RX"
+                                cip.direction = "rx"
+                                cip.simpleMode = "IP to HDMI"
+                                cip.type = "DRH"
+                                cip.hasEdid = true;
+                            break;
 
+                            case "fpga2110_hdmi_colibri_rj45_1_2G5_tx":
+                                cip.firmwareMode = "HDMI 2.5G TX"
+                                cip.direction = "tx"
+                                cip.simpleMode = "HDMI to IP"
+                                cip.type = "DRH"
+                                cip.hasEdid = true;
+                            break;
 
                             default:
+                                SyncLog.log("warn", "MatroxCIP", `Device ${sn}: Unknown SKU detected: ${context.header.sku}. Please add support for this device type.`);
                                 cip.firmwareMode = "Unknown"
+                                cip.simpleMode = "Unknown Device Type"
+                                cip.type = "UNK"
                         }
 
+                        SyncLog.log("debug", "MatroxCIP", `Device ${sn}: Fields set - Type: '${cip.type}', SimpleMode: '${cip.simpleMode}', FirmwareMode: '${cip.firmwareMode}'`);
                         cip.name = context.nmosInterface.deviceName;
 
                         cip.moinitorMode = context.monitorSettings.selectResolution;

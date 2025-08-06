@@ -36,6 +36,12 @@ isConnecting = false
 authTimeoutOccurred = false
 receive_buffer = ""
 
+-- Reconnect state variables
+current_reconnect_interval = RECONNECT_INTERVAL
+last_connection_failure_type = nil
+ip_address_empty_count = 0
+last_ip_check_time = 0
+
 -- Router configuration variables
 ROUTER_USER = "admin"
 ROUTER_PASSWORD = "password"
@@ -310,12 +316,48 @@ end
 
 local ROUTER_PORT = 80 -- WebSocket port
 local RECONNECT_INTERVAL = 5 -- seconds
-local EncoderNames = {
-  "CIP-ENC-659", "CIP-ENC-630", "CIP-ENC-604", "CIP-ENC-668",
-  "CIP-ENC-619", "CIP-ENC-616", "CIP-ENC-637", "CIP-ENC-601",
-  "CIP-ENC-646", "CIP-ENC-660", "CIP-ENC-664", "CIP-ENC-686"
-}
+local MAX_RECONNECT_INTERVAL = 60 -- maximum seconds between reconnect attempts
+local RECONNECT_BACKOFF_MULTIPLIER = 1.5 -- exponential backoff multiplier
+local CONFIG_CHECK_INTERVAL = 30 -- seconds to check for config changes when IP is empty
 local DISCONNECT_CHOICE = "-- DISCONNECT --"
+
+-- Function to get encoder names from Controls["Encoder"]
+function GetEncoderNames()
+  local encoderNames = {}
+  
+  if Controls["Encoder"] then
+    local encoderControl = Controls["Encoder"]
+    
+    if type(encoderControl) == "table" then
+      -- Handle array-like table of encoder controls
+      for _, control in pairs(encoderControl) do
+        if control and control.String and control.String ~= "" then
+          table.insert(encoderNames, control.String)
+        end
+      end
+    elseif encoderControl.String then
+      -- Handle single encoder control with comma-separated values
+      local encoderList = encoderControl.String
+      if encoderList and encoderList ~= "" then
+        for encoderName in string.gmatch(encoderList, "[^,]+") do
+          local trimmedName = encoderName:match("^%s*(.-)%s*$") -- trim whitespace
+          if trimmedName ~= "" then
+            table.insert(encoderNames, trimmedName)
+          end
+        end
+      end
+    end
+  end
+  
+  -- If no encoders found in control, return empty list
+  if #encoderNames == 0 then
+    print("WARNING: No encoder names found in Controls['Encoder']. Please configure encoder list.")
+  else
+    debug_print("Found " .. #encoderNames .. " encoders: " .. table.concat(encoderNames, ", "))
+  end
+  
+  return encoderNames
+end
 
 -- Router credentials are defined globally at the top of the script
 -- DO NOT redefine them here
@@ -620,8 +662,43 @@ end
 
 function ConnectToServer()
   local ip = Controls["IP Address"].String
-  if not isConnecting and ip ~= "" and ROUTER_PORT > 0 then
+  
+  -- Handle empty IP address case with different logic
+  if not ip or ip == "" then
+    local current_time = os.time()
+    ip_address_empty_count = ip_address_empty_count + 1
+    last_connection_failure_type = "config"
+    
+    -- Only print error message periodically to avoid spam
+    if ip_address_empty_count == 1 or (current_time - last_ip_check_time) >= CONFIG_CHECK_INTERVAL then
+      print("Connection failed: IP Address control is empty. (Attempt #" .. ip_address_empty_count .. ")")
+      last_ip_check_time = current_time
+    end
+    
+    Component.Status = "Fault"
+    Controls["Connection status"].String = "Configuration Error - No IP Address Set"
+    
+    -- Reset connection state
+    isConnecting = false
+    
+    -- Schedule next check with longer interval for config issues
+    if reconnectTimer then
+      reconnectTimer:Stop()
+      reconnectTimer:Start(CONFIG_CHECK_INTERVAL)
+    end
+    return
+  end
+  
+  -- Reset IP address error count on successful IP validation
+  if ip_address_empty_count > 0 then
+    print("IP Address now configured: " .. ip .. ". Resuming normal connection attempts.")
+    ip_address_empty_count = 0
+    current_reconnect_interval = RECONNECT_INTERVAL -- Reset backoff
+  end
+  
+  if not isConnecting and ROUTER_PORT > 0 then
     isConnecting = true
+    last_connection_failure_type = "network"
     Controls["Connection status"].String = "Connecting..."
     print("Attempting to connect to ws://" .. ip .. ":" .. ROUTER_PORT .. "/")
 
@@ -664,6 +741,10 @@ function ConnectToServer()
       Component.Status = "OK"
       Controls["Connection status"].String = "Connected, authenticating..."
       
+      -- Reset reconnect backoff on successful connection
+      current_reconnect_interval = RECONNECT_INTERVAL
+      print("DEBUG: Connection successful, reset reconnect interval to " .. RECONNECT_INTERVAL .. " seconds")
+      
       -- Stop reconnect timer if it was running
       if reconnectTimer then reconnectTimer:Stop() end
       
@@ -692,11 +773,15 @@ function ConnectToServer()
       print("DEBUG: Stopping ping timer")
       if pingTimer then pingTimer:Stop() end
       
-      -- Start reconnect timer
-      print("DEBUG: Attempting reconnect in " .. RECONNECT_INTERVAL .. " seconds...")
+      -- Start reconnect timer with exponential backoff for network failures
+      if last_connection_failure_type == "network" then
+        current_reconnect_interval = math.min(current_reconnect_interval * RECONNECT_BACKOFF_MULTIPLIER, MAX_RECONNECT_INTERVAL)
+      end
+      
+      print("DEBUG: Attempting reconnect in " .. current_reconnect_interval .. " seconds...")
       if reconnectTimer then 
         reconnectTimer:Stop() 
-        reconnectTimer:Start(RECONNECT_INTERVAL)
+        reconnectTimer:Start(current_reconnect_interval)
       end
     end
     
@@ -731,10 +816,15 @@ function ConnectToServer()
       -- Stop ping timer
       if pingTimer then pingTimer:Stop() end
       
-      -- Try to reconnect after error
+      -- Try to reconnect after error with exponential backoff
+      if last_connection_failure_type == "network" then
+        current_reconnect_interval = math.min(current_reconnect_interval * RECONNECT_BACKOFF_MULTIPLIER, MAX_RECONNECT_INTERVAL)
+      end
+      
+      print("DEBUG: Scheduling reconnect after error in " .. current_reconnect_interval .. " seconds...")
       if reconnectTimer then 
         reconnectTimer:Stop()
-        reconnectTimer:Start(RECONNECT_INTERVAL)
+        reconnectTimer:Start(current_reconnect_interval)
       end
     end
     
@@ -748,9 +838,9 @@ function ConnectToServer()
     ws:Connect("ws", ip, "/", ROUTER_PORT)
     debug_print("Connect called. Connection attempt in progress...")
   else
-    Component.Status = "Fault"
-    Controls["Connection status"].String = "Idle - No IP Address"
-    print("Connection failed: IP Address control is empty.")
+    -- This else block should not be reached with the new logic above
+    print("WARNING: ConnectToServer reached unexpected else condition")
+    isConnecting = false
   end
 end
 
@@ -797,10 +887,11 @@ function OnDecoderSourceChanged(sourceControl, decoderControl)
   if decoderName and decoderName ~= "" then
     local payload
     if sourceName == DISCONNECT_CHOICE then
-      -- To disconnect, we send a null source for the given destination.
+      -- To disconnect, we send an empty source for the given destination.
       payload = {
         destination = decoderName,
-        source = rapidjson.null
+        source = "",
+        preview = false
       }
       debug_print("DEBUG: Disconnecting decoder: " .. decoderName)
     else
@@ -890,7 +981,8 @@ function Initialize()
 
   -- Create the list of choices for the source dropdowns
   local sourceChoices = { DISCONNECT_CHOICE }
-  for _, encoderName in ipairs(EncoderNames) do
+  local encoderNames = GetEncoderNames()
+  for _, encoderName in ipairs(encoderNames) do
     table.insert(sourceChoices, encoderName)
   end
   

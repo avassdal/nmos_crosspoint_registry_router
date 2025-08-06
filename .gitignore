@@ -7,3 +7,4 @@ server/public/*
 server/log/*
 _tempFiles/*
 nmos_secrets.yml
+docs/CIP Rest API/

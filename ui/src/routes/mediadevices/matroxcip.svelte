@@ -37,6 +37,8 @@
 
         {id:"ptpStatus", name:"PTP Status" ,     sortable:true, sortField:"ptpStatus", resize:false  , canHide:true},
         {id:"ptpDomain", name:"PTP Domain" ,     sortable:true, sortField:"__customPtpDomain", resize:false  , canHide:true},
+        {id:"ptpMenu", name:"" ,     sortable:false,  resize:false  , canHide:true},
+        {id:"restartMenu", name:"" ,     sortable:false,  resize:false  , canHide:true},
         {id:"flowMode", name:"Flow Mode" ,     sortable:true, sortField:"flowMode", resize:false  , canHide:true},
 
         
@@ -318,6 +320,50 @@
         });
      }
 
+     function ptpEnableAll(){
+        ServerConnector.startLoad();
+        ServerConnector.get("matroxcip_ptpenableall").then((f:any)=>{
+          ServerConnector.endLoad();
+          ServerConnector.addFeedback({level:"success",message:"PTP enabled on all devices"})
+        }).catch((e)=>{
+          ServerConnector.endLoad();
+          ServerConnector.addFeedback({level:"error",message:"Failed to enable PTP on all devices: "+ e.message})
+        });
+     }
+
+     function ptpDisableAll(){
+        ServerConnector.startLoad();
+        ServerConnector.get("matroxcip_ptpdisableall").then((f:any)=>{
+          ServerConnector.endLoad();
+          ServerConnector.addFeedback({level:"success",message:"PTP disabled on all devices"})
+        }).catch((e)=>{
+          ServerConnector.endLoad();
+          ServerConnector.addFeedback({level:"error",message:"Failed to disable PTP on all devices: "+ e.message})
+        });
+     }
+
+     function restartDevice(sn:string){
+        ServerConnector.startLoad();
+        ServerConnector.post("matroxcip_restart",{sn:sn}).then((f:any)=>{
+          ServerConnector.endLoad();
+          ServerConnector.addFeedback({level:"success",message:"Device restart initiated"})
+        }).catch((e)=>{
+          ServerConnector.endLoad();
+          ServerConnector.addFeedback({level:"error",message:"Failed to restart device: "+ e.message})
+        });
+     }
+
+     function restartAll(){
+        ServerConnector.startLoad();
+        ServerConnector.get("matroxcip_restartall").then((f:any)=>{
+          ServerConnector.endLoad();
+          ServerConnector.addFeedback({level:"success",message:"All devices restart initiated"})
+        }).catch((e)=>{
+          ServerConnector.endLoad();
+          ServerConnector.addFeedback({level:"error",message:"Failed to restart all devices: "+ e.message})
+        });
+     }
+
     function fixPtpDomain(sn:string){
       ServerConnector.startLoad();
         ServerConnector.post("matroxcip_fixptpdomain",{sn:sn}).then((f:any)=>{
@@ -351,6 +397,17 @@
           ServerConnector.addFeedback({level:"error",message:"Can not enable master: "+ e.message})
         });
      }
+
+     function togglePtp(sn:string, enabled:boolean){
+        ServerConnector.startLoad();
+        ServerConnector.post("matroxcip_toggleptp",{sn:sn, enabled:enabled}).then((f:any)=>{
+          ServerConnector.endLoad();
+          ServerConnector.addFeedback({level:"success",message:`PTP ${enabled ? 'enabled' : 'disabled'}`})
+        }).catch((e)=>{
+          ServerConnector.endLoad();
+          ServerConnector.addFeedback({level:"error",message:"Can not toggle PTP: "+ e.message})
+        });
+      }
 
      function changeResolution(sn:string, name:string){
         ServerConnector.startLoad();
@@ -539,21 +596,36 @@
                       <div class="table-cell">
                         <div class="table-content">{col.name}</div>
                         <div class="table-functions">
-                      {#if col.sortable}
-                      {#if filter.sortCols.includes(col.id + "__down")}
-                        <button class="btn btn-circle btn-ghost" on:click={()=>{toggleSort(col.id)}}>
-                          <Icon class="text-info" src={BarsArrowDown}></Icon>
-                        </button>
-                      {:else if filter.sortCols.includes(col.id + "__up")}
-                        <button class="btn btn-circle btn-ghost" on:click={()=>{toggleSort(col.id)}}>
-                          <Icon class="text-info" src={BarsArrowUp}></Icon>
-                        </button>
-                      {:else}
-                      <button class="btn btn-circle btn-ghost" on:click={()=>{toggleSort(col.id)}}>
-                        <Icon class="" src={BarsArrowDown}></Icon>
-                      </button>
-                      {/if}
-                      {/if}
+                       {#if col.sortable}
+                       {#if filter.sortCols.includes(col.id + "__down")}
+                         <button class="btn btn-circle btn-ghost" on:click={()=>{toggleSort(col.id)}}>
+                           <Icon class="text-info" src={BarsArrowDown}></Icon>
+                         </button>
+                       {:else if filter.sortCols.includes(col.id + "__up")}
+                         <button class="btn btn-circle btn-ghost" on:click={()=>{toggleSort(col.id)}}>
+                           <Icon class="text-info" src={BarsArrowUp}></Icon>
+                         </button>
+                       {:else}
+                       <button class="btn btn-circle btn-ghost" on:click={()=>{toggleSort(col.id)}}>
+                         <Icon class="" src={BarsArrowDown}></Icon>
+                       </button>
+                       {/if}
+                       {/if}
+
+                       {#if col.id == "ptpMenu"}
+                         <button class="btn btn-success btn-circle btn-sm" data-tooltip-position="bottom" use:OverlayMenuService.tooltip data-tooltip="Enable PTP on all devices" on:click={()=>{ptpEnableAll()}}>
+                           <Icon src={CodeBracket}></Icon>
+                         </button>
+                         <button class="btn btn-warning btn-circle btn-sm" data-tooltip-position="bottom" use:OverlayMenuService.tooltip data-tooltip="Disable PTP on all devices" on:click={()=>{ptpDisableAll()}}>
+                           <Icon src={CodeBracketSquare}></Icon>
+                         </button>
+                       {/if}
+
+                       {#if col.id == "restartMenu"}
+                         <button class="btn btn-error btn-circle btn-sm" data-tooltip-position="bottom" use:OverlayMenuService.tooltip data-tooltip="Restart all devices" on:click={()=>{restartAll()}}>
+                           <Icon src={ArrowPath}></Icon>
+                         </button>
+                       {/if}
 
                         </div>
                       </div>
@@ -699,6 +771,23 @@
                                   <Icon src={ArrowUturnLeft}></Icon>
                               </button> 
                               {/if}
+                            {/if}
+
+                            {#if col.id == "ptpMenu"}
+                              <button class="btn btn-circle" on:click={(evt)=>{menu.open({entry:[
+                                {
+                                  label: dev.ptpEnabled ? "Disable PTP" : "Enable PTP",
+                                  callback: ()=>{togglePtp(dev.sn, !dev.ptpEnabled)}
+                                }
+                              ]},evt)}}>
+                                <Icon src={EllipsisVertical}></Icon>
+                              </button>
+                            {/if}
+
+                            {#if col.id == "restartMenu"}
+                              <button class="btn btn-error btn-circle" data-tooltip-position="left,bottom" use:OverlayMenuService.tooltip data-tooltip="Restart device" on:click={()=>{restartDevice(dev.sn)}}>
+                                <Icon src={ArrowPath}></Icon>
+                              </button>
                             {/if}
 
 
