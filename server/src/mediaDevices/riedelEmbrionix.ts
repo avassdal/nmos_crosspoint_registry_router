@@ -194,7 +194,7 @@ export default class MediaDevRiedelEmbrionix {
 
                 this.state.devices[id] = emx;
             }catch(e){
-                this.state.devices[id] = true;
+                this.state.devices[id].error = true;
                 SyncLog.error("Embrionix", "failed to load data on: " + JSON.stringify(this.state.devices[id].ip) +" Message: "+ e.message)
             }
         }

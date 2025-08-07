@@ -20,7 +20,7 @@ This Lua script provides a comprehensive interface for controlling an NMOS Cross
 - Q-SYS Designer software
 - NMOS Crosspoint Router (server) running and accessible
 - Network connectivity between Q-SYS Core and NMOS Router
-- WebSocket access enabled on NMOS Router
+- WebSocket access enabled on NMOS Router (default port 80)
 
 ## Installation
 
@@ -33,11 +33,15 @@ This Lua script provides a comprehensive interface for controlling an NMOS Cross
    - `Controls["IP Address"]` (String): IP address of NMOS Crosspoint Router
    - `Controls["Connection status"]` (String): Connection status display
    - `Controls["CIP-Status"]` (String): Matrox CIP status (optional)
-   - `Controls["Device State"]` (String): Current device state display
+   - `Controls["Encoder"]` (String or Array): Encoder device names (comma-separated or array)
 
 3. **Create Decoder Controls**:
    - `Controls.Decoder` (Array of String): Decoder device names
-   - `Controls.DecoderSource` (Array of Knob/Combo): Source selection for each decoder
+   - `Controls.DecoderSource` (Array of String/Knob/Combo): Source selection for each decoder
+   - `Controls.Multiviewer` (Array of Boolean): Per-decoder multiviewer toggle controls
+
+4. **Optional Controls**:
+   - `Controls.Code` (String): JSON preset input for advanced commands
 
 ## Configuration
 
@@ -51,13 +55,20 @@ ROUTER_PASSWORD = "password"
 -- Debug and monitoring flags
 DEBUG_ENABLED = false      -- Set true for verbose logging
 ENABLE_PATCH_STATS = false -- Set true for patch statistics
+
+-- Network configuration
+ROUTER_PORT = 80           -- WebSocket port (default 80)
+RECONNECT_INTERVAL = 5     -- Seconds between reconnect attempts
+MAX_RECONNECT_INTERVAL = 60 -- Maximum reconnect interval
 ```
 
 ### Network Configuration
 
 1. Set the IP address in `Controls["IP Address"]` to your NMOS Router server
 2. Ensure proper network routing between Q-SYS Core and NMOS Router
-3. Configure firewall rules to allow WebSocket connections (typically port 8080)
+3. Configure firewall rules to allow WebSocket connections (default port 80)
+4. Configure encoder names in `Controls["Encoder"]` (comma-separated string or array)
+5. Set up decoder names in the `Controls.Decoder` array
 
 ## Usage
 
@@ -65,8 +76,9 @@ ENABLE_PATCH_STATS = false -- Set true for patch statistics
 
 1. **Initial Connection**: The script automatically attempts to connect when loaded
 2. **Authentication**: Uses SHA256 password hashing with server-provided seed
-3. **Device Discovery**: Automatically discovers available NMOS devices
-4. **Subscription**: Subscribes to real-time updates for device state changes
+3. **Channel Subscription**: Subscribes to `mediadevices` and `mediadevmatroxcip` channels
+4. **Real-time Updates**: Receives patch-based updates for device state changes
+5. **Automatic Reconnection**: Implements exponential backoff for failed connections
 
 ### Making Connections
 
@@ -90,11 +102,37 @@ ENABLE_PATCH_STATS = false -- Set true for patch statistics
 }
 ```
 
+### Matrox Convert IP Multiviewer Control
+
+The script provides integrated control for Matrox Convert IP device multiviewer functionality:
+
+#### Per-Decoder Multiviewer Controls
+- Each decoder has its own `Controls.Multiviewer[n]` (Boolean) toggle
+- Toggling enables/disables multiviewer mode for the specific decoder
+- When multiviewer is enabled, master mode is automatically activated
+- Changes are sent via WebSocket API to the NMOS Crosspoint Router
+
+#### Automatic Master Mode Activation
+- Master mode is automatically enabled when multiviewer is activated
+- Ensures proper operation of multiviewer functionality
+- Uses official Matrox Convert IP REST API endpoints
+
+#### Device Identification
+- Supports flexible device lookup by serial number, device name, or alias
+- Handles multiple serial number formats (e.g., "YXA00634", "8700634", "CIP-DEC-634")
+- Robust error handling for device discovery and API calls
+
+#### Debug Output
+- Multiviewer toggle events generate debug logs when `DEBUG_ENABLED = true`
+- Device status changes are logged for troubleshooting
+- API response status is tracked and reported
+
 ### Supported Commands
 
 - **Connect**: `join <encoder> <decoder>`
 - **Disconnect**: `stop <decoder>`
 - **Multi-connection**: Support for multiple encoder/decoder pairs
+- **Multiviewer Toggle**: Per-decoder multiviewer enable/disable
 
 ## API Integration
 
@@ -102,11 +140,13 @@ ENABLE_PATCH_STATS = false -- Set true for patch statistics
 
 The script handles several message types from the NMOS Router:
 
-- **auth**: Authentication challenge
-- **authseed**: Authentication seed for password hashing
-- **authok**: Successful authentication
-- **sync**: Real-time state synchronization
-- **patch**: Incremental updates to device state
+- **authseed**: Server-provided seed for SHA256 password hashing
+- **authok**: Successful authentication confirmation
+- **sync**: Initial data synchronization for subscribed channels
+- **patch**: Incremental JSON Patch updates to device state
+- **response**: Server responses to API requests
+- **ping/pong**: Keep-alive messages
+- **authfailed/autherror**: Authentication failure notifications
 
 ### Data Structures
 
@@ -157,25 +197,42 @@ This will provide verbose output in Q-SYS logs for troubleshooting.
 ### Common Error Messages
 
 - **"Failed to decode JSON"**: Check network connectivity and server response
-- **"Authentication failed"**: Verify credentials and user permissions
-- **"Connection timeout"**: Check firewall and network routing
+- **"Authentication failed"**: Verify credentials in `ROUTER_USER` and `ROUTER_PASSWORD`
+- **"Connection timeout"**: Check firewall and network routing to port 80
+- **"Control 'X' not found"**: Ensure required Q-SYS controls are created
+- **"IP Address control is empty"**: Set the router IP address in the control
 
 ### Device Discovery Issues
 
-1. **No devices found**: Ensure NMOS devices are properly registered
-2. **Missing devices**: Check NMOS registry configuration
-3. **Stale device list**: Restart the script or wait for automatic refresh
+1. **No devices found**: Check `mediadevices` and `mediadevmatroxcip` subscriptions
+2. **Missing encoder names**: Configure `Controls["Encoder"]` with device names
+3. **Decoder control mismatch**: Ensure `Controls.Decoder` and `Controls.DecoderSource` arrays match
+4. **Stale device list**: Check patch processing and UI update throttling
+
+### Matrox Convert IP Multiviewer Issues
+
+1. **Multiviewer toggle not working**: Verify `Controls.Multiviewer` array exists and matches decoder count
+2. **Device not found errors**: Check device serial number formats and ensure device is discoverable
+3. **Master mode not activating**: Verify automatic master mode enable is working (check debug logs)
+4. **API authentication failures**: Confirm Matrox device credentials are correct in backend
+5. **Multiviewer license not installed**: Check device capabilities and license status
 
 ## Advanced Configuration
 
 ### Custom Device Mapping
 
-The script supports custom device naming and mapping:
+The script reads encoder names from `Controls["Encoder"]` and supports:
 
 ```lua
--- Example custom encoder/decoder mapping
-EncoderNames = {"Studio_Encoder", "Remote_Encoder", "Backup_Encoder"}
-DecoderNames = {"Main_Decoder", "Preview_Decoder", "Record_Decoder"}
+-- Option 1: Comma-separated string in single control
+Controls["Encoder"].String = "Studio_Encoder,Remote_Encoder,Backup_Encoder"
+
+-- Option 2: Array of encoder controls
+Controls["Encoder"][1].String = "Studio_Encoder"
+Controls["Encoder"][2].String = "Remote_Encoder"
+
+-- Decoder controls are automatically mapped from arrays
+-- Controls.Decoder[1].String, Controls.DecoderSource[1], etc.
 ```
 
 ### Custom Authentication
@@ -202,12 +259,14 @@ The script can be extended to integrate with:
 ### Network Optimization
 - Use wired connections for Q-SYS Core when possible
 - Minimize network hops between Q-SYS and NMOS Router
-- Configure appropriate ping intervals to balance responsiveness with network load
+- Configure appropriate ping intervals (default 30 seconds) for keep-alive
+- Monitor exponential backoff reconnection behavior
 
 ### Memory Management
-- The script automatically manages device data storage
-- Large device lists may impact Q-SYS Core performance
-- Consider limiting scope if experiencing performance issues
+- The script uses patch-based updates to minimize memory usage
+- UI updates are throttled (0.5s interval) to prevent excessive processing
+- Device data is stored in `stored_device_data` table with automatic cleanup
+- Enable `ENABLE_PATCH_STATS` for monitoring patch operation statistics
 
 ## Security Considerations
 

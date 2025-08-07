@@ -8,24 +8,52 @@ This tool is tested against a lot of devices and now stable and performant with 
 
 ## Features
 
-- List of all NMOS Devices and Flows in the Network
-- Connecting Flows to Receivers (Crosspoint style)
-- Integration for prorietary device overview and control
-- Connection to Companion (Beta)
-- Managing of all Multicast adresses (Beta)
-- Reconnect on flow changes
+### Core NMOS Functionality
+- **Complete NMOS Device Discovery**: Automatic discovery and real-time monitoring of all NMOS devices, senders, receivers, and flows
+- **Crosspoint Switching**: Intuitive crosspoint-style interface for connecting flows to receivers
+- **Multi-Registry Support**: Connect to multiple NMOS registries across different network segments
+- **Real-time Updates**: WebSocket-based live updates for device status and connection changes
+- **Flow Management**: Enable/disable flows, manage multicast addresses, and handle connection states
+- **Automatic Reconnection**: Smart reconnection logic on flow changes and network disruptions
 
-## Planned features
+### Device Integration & Control
+- **Matrox Convert IP Integration**: 
+  - Per-device multiviewer mode control
+  - PTP (Precision Time Protocol) enable/disable functionality
+  - Flexible device identification (serial numbers, names, aliases)
+  - Device grouping to consolidate all video/audio channels per physical device
+- **Device Deduplication**: Intelligent merging of devices with different identifier formats
+- **Proprietary Device Abstractions**: Extensible framework for device-specific control and monitoring
 
-- Virtual senders and receivers
-- Network topology view
-- Active, network aware routing (SDN Like)
-- IS-07 ( Connecting WebSocket Data Streams is already working with easy-nmos-node )
-- IS-08 ( Work in progress)
+### External System Integration
+- **Q-SYS Integration**: Comprehensive Lua script for Q-SYS control systems with WebSocket API
+- **Companion Integration**: Connection to Bitfocus Companion for advanced control workflows
+- **WebSocket API**: Full-featured API for third-party integrations and custom applications
 
-## TODO
+### Network & Performance
+- **High Performance**: Tested stable with 2000+ flows in production environments
+- **Multi-Network Support**: Operates across multiple network segments (OOB, production, backup)
+- **Advanced Routing**: Intelligent path selection and failover capabilities
+- **Network Topology Awareness**: Understanding of network structure for optimal routing decisions
 
-- Documentation !
+## Planned Features
+
+- **Virtual Senders and Receivers**: Software-based endpoints for flexible routing
+- **Network Topology Visualization**: Interactive network mapping and visualization
+- **SDN-style Intelligent Routing**: Network-aware, active routing with path optimization
+- **NMOS IS-07 Events**: Enhanced event and tally integration (WebSocket streams already supported)
+- **NMOS IS-08 Channel Mapping**: Advanced audio channel mapping and control
+- **Enhanced Device Abstractions**: Support for additional manufacturer-specific device types
+- **Advanced Analytics**: Connection statistics, network performance monitoring, and usage analytics
+
+## Recent Enhancements
+
+- ✅ **Matrox Convert IP Integration**: Complete multiviewer and device control functionality
+- ✅ **Device Grouping**: All video/audio channels consolidated per physical device
+- ✅ **Q-SYS Integration**: Comprehensive Lua script with WebSocket API control
+- ✅ **Enhanced Documentation**: Complete API documentation and usage guides
+- ✅ **Device Deduplication**: Intelligent handling of multiple device identifier formats
+- ✅ **WebSocket API**: Full-featured API for external integrations
 
 ## Changes from Version 1.0
 
@@ -35,11 +63,52 @@ This tool is tested against a lot of devices and now stable and performant with 
 - Added basics for implementation of device abstractions
 - Lot of Bug fixing
 
+## System Integrations
+
+### Q-SYS Control Systems
+Comprehensive integration with QSC Q-SYS platforms via Lua scripting:
+- **Real-time WebSocket Communication**: Direct connection to NMOS Crosspoint Router
+- **Crosspoint Control**: Make/break connections between encoders and decoders
+- **Matrox Multiviewer Control**: Per-decoder multiviewer toggles with automatic master mode
+- **Device Discovery**: Automatic discovery and control of NMOS devices
+- **JSON Preset Support**: Load and save connection configurations
+- **Debug Logging**: Comprehensive troubleshooting capabilities
+
+**Files**: `scripts/q-sys-crosspoint-control.lua`, `scripts/README.md`
+
+### Matrox Convert IP Devices
+Native integration for Matrox Convert IP encoder/decoder control:
+- **Multiviewer Mode**: Enable/disable multiviewer with automatic master mode activation
+- **PTP Control**: Precision Time Protocol enable/disable functionality
+- **Device Management**: Flexible device identification and status monitoring
+- **Device Grouping**: Consolidate all video/audio channels per physical device
+- **REST API Integration**: Direct integration with Matrox device APIs
+
+**Backend Module**: `server/src/mediaDevices/matroxConvertIp.ts`
+
+### WebSocket API
+Full-featured API for custom integrations and third-party applications:
+- **Real-time Synchronized Objects**: Live device and flow state updates
+- **Device Control Routes**: Connection management, flow control, device-specific commands
+- **Matrox-specific Routes**: `matroxcip_togglemultiviewer`, `matroxcip_toggleptp`
+- **Authentication Support**: Secure access with user management
+
+**Documentation**: `docs/WEBSOCKET_API.md`
+
+### Bitfocus Companion
+Integration with Companion for advanced control workflows and panel interfaces.
+
 ## Dependencies
 
-This tool needs a working NMOS Registry running in the network. We test against [nmos-cpp](https://github.com/sony/nmos-cpp) in a docker container.
+### NMOS Registry
+This tool requires a working NMOS Registry running in the network. We test against [nmos-cpp](https://github.com/sony/nmos-cpp) in a docker container.
 
 To get one up and running, you can use the one provided by rhastie: [https://github.com/rhastie/build-nmos-cpp](https://github.com/rhastie/build-nmos-cpp)
+
+### Runtime Requirements
+- **Node.js**: Version 20 or higher
+- **Network Access**: Connectivity to NMOS registries and target devices
+- **WebSocket Support**: For real-time communication and external integrations
 
 ## Configuration
 

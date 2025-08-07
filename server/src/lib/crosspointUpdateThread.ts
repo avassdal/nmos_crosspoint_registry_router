@@ -403,15 +403,75 @@ class CrosspointUpdateThread{
     updateShadow(){
         let changed = false;
 
-        for(let devId in this.crosspointShadow){
-            if(devId.startsWith("nmosgrp_")){
-                this.crosspointShadow[devId].available = false;
+        // Device registry to ensure consistent grouping
+        let deviceRegistry: {[deviceId: string]: string} = {}; // Maps device_id to groupId
+
+        // Mark all existing NMOS devices as unavailable first
+        for(let devId in this.crosspointShadow.devices){
+            if(devId.startsWith("nmosgrp_") || devId.startsWith("nmos_")){
+                // Add available property if missing (for backwards compatibility)
+                if(!this.crosspointShadow.devices[devId].hasOwnProperty('available')){
+                    (this.crosspointShadow.devices[devId] as any).available = false;
+                } else {
+                    (this.crosspointShadow.devices[devId] as any).available = false;
+                }
             }
         }
+        // Helper function to get consistent group ID and label for a device
+        const getDeviceGroupInfo = (device_id: string, flow: any, flowType: 'sender' | 'receiver') => {
+            let groupId = "";
+            let groupLabel = "";
+            
+            // Check if we already determined the group for this device
+            if(deviceRegistry.hasOwnProperty(device_id)){
+                groupId = deviceRegistry[device_id];
+                // Get existing group label
+                if(this.crosspointShadow.devices.hasOwnProperty(groupId)){
+                    groupLabel = this.crosspointShadow.devices[groupId].name;
+                }
+            } else {
+                // Determine group ID for this device
+                if(this.nmosUseGroupHints && flow.hasOwnProperty('tags') && flow.tags.hasOwnProperty("urn:x-nmos:tag:grouphint/v1.0") && Array.isArray(flow.tags["urn:x-nmos:tag:grouphint/v1.0"]) && flow.tags["urn:x-nmos:tag:grouphint/v1.0"].length > 0){
+                    let group = (flow.tags["urn:x-nmos:tag:grouphint/v1.0"][0] as string).split(':')[0];
+                    groupId = 'nmosgrp_' + md5(group + device_id);
+                    
+                    if(this.nmosState.devices.hasOwnProperty(device_id)){
+                        let groupLabels: string[] = [];
+                        // Check both senders and receivers for group labels
+                        [...this.nmosState.devices[device_id].senders, ...this.nmosState.devices[device_id].receivers].forEach((id: string) => {
+                            let nmosFlow = this.nmosState.senders[id] || this.nmosState.receivers[id];
+                            if(nmosFlow && nmosFlow.hasOwnProperty('tags') && nmosFlow.tags.hasOwnProperty("urn:x-nmos:tag:grouphint/v1.0") && Array.isArray(nmosFlow.tags["urn:x-nmos:tag:grouphint/v1.0"]) && nmosFlow.tags["urn:x-nmos:tag:grouphint/v1.0"].length > 0) {
+                                let otherGroup = (nmosFlow.tags["urn:x-nmos:tag:grouphint/v1.0"][0] as string).split(':')[0];
+                                if(!groupLabels.includes(otherGroup)){
+                                    groupLabels.push(otherGroup);
+                                }
+                            }
+                        });
+                        
+                        // Always use just the device label, no group suffix
+                        groupLabel = this.nmosState.devices[device_id].label;
+                    } else {
+                        groupLabel = group;
+                    }
+                } else {
+                    // Use device-based grouping (this ensures single device entry)
+                    groupId = "nmos_" + device_id;
+                    if(this.nmosState.devices.hasOwnProperty(device_id)){
+                        groupLabel = this.nmosState.devices[device_id].label;
+                    } else {
+                        groupLabel = "UNKNOWN";
+                    }
+                }
+                
+                // Register this device to the group
+                deviceRegistry[device_id] = groupId;
+            }
+            
+            return { groupId, groupLabel };
+        };
+
         if(this.nmosState){
             // NMOS Senders
-
-            // alphabetical sorting....
             let list = [];
             for (let s of Object.values(this.nmosState.senders)) {
                 list.push(s)
@@ -420,50 +480,10 @@ class CrosspointUpdateThread{
             list = list.sort((a,b)=>{
                 return ComplexCompare(a.label,b.label);
             })
+            
             for (let s of list) {
                 let send:any = s;
-
-                let groupId = "";
-                let groupHint = false;
-                let groupLabel = "";
-
-                if(this.nmosUseGroupHints && send.hasOwnProperty('tags') && send.tags.hasOwnProperty("urn:x-nmos:tag:grouphint/v1.0") && Array.isArray(send.tags["urn:x-nmos:tag:grouphint/v1.0"]) && send.tags["urn:x-nmos:tag:grouphint/v1.0"].length > 0){
-                    let group = (send.tags["urn:x-nmos:tag:grouphint/v1.0"][0] as string).split(':')[0];
-                    groupId = 'nmosgrp_' +md5(group+send.device_id);
-                    groupHint = true;
-                    if(this.nmosState.devices.hasOwnProperty(send.device_id)){
-
-                        // If device is new, check naming
-                        let groupLabels:string[] = [];
-                        this.nmosState.devices[send.device_id].senders.forEach((id:string)=>{
-                            if(this.nmosState.senders[id]){
-                                let otherSender = this.nmosState.senders[id]
-                                if(otherSender.hasOwnProperty('tags') && otherSender.tags.hasOwnProperty("urn:x-nmos:tag:grouphint/v1.0") && Array.isArray(otherSender.tags["urn:x-nmos:tag:grouphint/v1.0"]) && otherSender.tags["urn:x-nmos:tag:grouphint/v1.0"].length > 0  ) {
-                                    let otherGroup = (otherSender.tags["urn:x-nmos:tag:grouphint/v1.0"][0] as string).split(':')[0];
-                                    if(!groupLabels.includes(otherGroup)){
-                                        groupLabels.push(otherGroup);
-                                    }
-                                }
-                            }
-                            
-                        })
-                        if(groupLabels.length > 1){
-                            groupLabel = this.nmosState.devices[send.device_id].label + " - " + group;
-                        }else{
-                            groupLabel = this.nmosState.devices[send.device_id].label;
-                        }
-                        
-                    }else{
-                        groupLabel = group;
-                    }
-                }else{
-                    groupId = "nmos_"+send.device_id;
-                    if(this.nmosState.devices.hasOwnProperty(send.device_id)){
-                        groupLabel = this.nmosState.devices[send.device_id].label;
-                    }else{
-                        groupLabel = "UNKNOWN";
-                    }
-                }
+                let { groupId, groupLabel } = getDeviceGroupInfo(send.device_id, send, 'sender');
 
                 
 
@@ -536,57 +556,9 @@ class CrosspointUpdateThread{
                 return ComplexCompare(a.label,b.label);
             })
 
-
-
-
             for (let r of list) {
                 let recv:any = r;
-
-                let groupId = "";
-                let groupHint = false;
-                let groupLabel = "";
-
-                if(this.nmosUseGroupHints && recv.hasOwnProperty('tags') && recv.tags.hasOwnProperty("urn:x-nmos:tag:grouphint/v1.0") && Array.isArray(recv.tags["urn:x-nmos:tag:grouphint/v1.0"]) && recv.tags["urn:x-nmos:tag:grouphint/v1.0"].length > 0){
-                    let group = (recv.tags["urn:x-nmos:tag:grouphint/v1.0"][0] as string).split(':')[0];
-                    let flowNameFromGroup = (recv.tags["urn:x-nmos:tag:grouphint/v1.0"][0] as string).split(':')[1];
-                    groupId = 'nmosgrp_' +md5(group+recv.device_id);
-                    groupHint = true;
-                    if(this.nmosState.devices.hasOwnProperty(recv.device_id)){
-
-
-
-
-                        // If device is new, check naming
-                        let groupLabels:string[] = [];
-                        this.nmosState.devices[recv.device_id].senders.forEach((id:string)=>{
-                            if(this.nmosState.receivers[id]){
-                                let otherReceiver = this.nmosState.receivers[id]
-                                if(otherReceiver.hasOwnProperty('tags') && otherReceiver.tags.hasOwnProperty("urn:x-nmos:tag:grouphint/v1.0") && Array.isArray(otherReceiver.tags["urn:x-nmos:tag:grouphint/v1.0"]) && otherReceiver.tags["urn:x-nmos:tag:grouphint/v1.0"].length > 0  ) {
-                                    let otherGroup = (otherReceiver.tags["urn:x-nmos:tag:grouphint/v1.0"][0] as string).split(':')[0];
-                                    if(!groupLabels.includes(otherGroup)){
-                                        groupLabels.push(otherGroup);
-                                    }
-                                }
-                            }
-                            
-                        })
-                        if(groupLabels.length > 1){
-                            groupLabel = this.nmosState.devices[recv.device_id].label + " - " + group;
-                        }else{
-                            groupLabel = this.nmosState.devices[recv.device_id].label;
-                        }
-
-                    }else{
-                        groupLabel = group;
-                    }
-                }else{
-                    groupId = "nmos_"+recv.device_id;
-                    if(this.nmosState.devices.hasOwnProperty(recv.device_id)){
-                        groupLabel = this.nmosState.devices[recv.device_id].label ;
-                    }else{
-                        groupLabel = "Unknown";
-                    }
-                }
+                let { groupId, groupLabel } = getDeviceGroupInfo(recv.device_id, recv, 'receiver');
 
                 
 

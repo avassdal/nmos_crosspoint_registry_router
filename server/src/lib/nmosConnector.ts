@@ -188,6 +188,21 @@ export class NmosRegistryConnector {
 
         this.updateSyncConnectionState();
     }
+
+    // Public method to add manual NMOS registry
+    public addManualRegistry(ip: string, port: number) {
+        const registry: NmosRegistry = {
+            ip: ip,
+            port: port,
+            priority: 100, // Higher priority than mdns discoveries
+            source: "manual",
+            domain: ""
+        };
+        
+        SyncLog.log("info", "NMOS Settings", "Adding Manual Registry: " + ip + ":" + port);
+        this.addRegistry(registry);
+    }
+
     connectRegistry(registry: NmosRegistry) {
         // TODO: disconnects and reconnects
 
@@ -1137,7 +1152,7 @@ interface NmosRegistry {
     port: number;
     domain: string;
     priority: number;
-    source: "mdns" | "static";
+    source: "mdns" | "static" | "manual";
 }
 
 interface ConnectionList {

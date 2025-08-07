@@ -328,6 +328,17 @@ export default class MediaDevMatroxConvertIp {
             });
         });
 
+        server.addRoute("POST", "matroxcip_togglemultiviewer","global", (client: WebsocketClient, query:string[], postData: any) => {
+            return new Promise((resolve, reject) => {
+                this.toggleMultiviewer(postData.sn, postData.enabled).then(()=>{
+                    resolve({});    
+                }).catch((e)=>{
+                    reject({status:400, message:e.message});
+                })
+                
+            });
+        });
+
         server.addRoute("GET", "matroxcip_ptpenableall","global", (client: WebsocketClient, query:string[]) => {
             return new Promise((resolve, reject) => {
                 this.ptpEnableAll().then(()=>{
@@ -420,6 +431,16 @@ export default class MediaDevMatroxConvertIp {
             return new Promise((resolve, reject) => {
                 this.deleteDevice(postData.sn).then(()=>{
                     resolve({});    
+                }).catch((e)=>{
+                    reject({status:400, message:e.message});
+                })
+            });
+        });
+
+        server.addRoute("POST", "matroxcip_setnmosregistry","global", (client: WebsocketClient, query:string[], postData: any) => {
+            return new Promise((resolve, reject) => {
+                this.setNmosRegistry(postData.sn, postData.ip, postData.port).then(()=>{
+                    resolve({message: "NMOS registry configured successfully"});    
                 }).catch((e)=>{
                     reject({status:400, message:e.message});
                 })
@@ -630,24 +651,103 @@ export default class MediaDevMatroxConvertIp {
                 data.api.endpoints.forEach((ep)=>{
                     ips.push(ep.host);
                 });
-                let cip:MatroxCipDevice = new MatroxCipDevice();
-                cip.sn = sn;
-                cip.loading = false;
+
+                // Helper function to determine if a serial number is alphanumeric (preferred format)
+                const isAlphanumeric = (serial: string): boolean => {
+                    return /[a-zA-Z]/.test(serial); // Contains at least one letter
+                };
+
+                // Device deduplication logic
+                let existingDeviceKey: string | null = null;
+                let existingDevice: MatroxCipDevice | null = null;
+                let useNewSerialAsKey = false;
+
+                // First check if we already have this exact serial number
                 if(this.state.devices.hasOwnProperty(sn)){
-                    cip = this.state.devices[sn];
-                }else{
-                    this.state.devices[sn] = cip;
+                    existingDeviceKey = sn;
+                    existingDevice = this.state.devices[sn];
+                } else {
+                    // Check for duplicates using normalized serial numbers and IP addresses
+                    for(let deviceSerial in this.state.devices) {
+                        let device = this.state.devices[deviceSerial];
+                        
+                        // Normalize serial numbers for comparison (remove non-alphanumeric, convert to lowercase)
+                        let normalizedSN = sn.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                        let normalizedExistingSN = deviceSerial.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                        
+                        // Check if serial numbers match when normalized
+                        let serialsMatch = false;
+                        if(normalizedSN === normalizedExistingSN) {
+                            serialsMatch = true;
+                        } else {
+                            // Also check for partial matches (e.g., "8700634" vs "yxa00634" both containing "00634")
+                            let snSuffix = normalizedSN.slice(-6); // Last 6 characters
+                            let existingSuffix = normalizedExistingSN.slice(-6);
+                            if(snSuffix.length >= 4 && existingSuffix.length >= 4 && snSuffix === existingSuffix) {
+                                serialsMatch = true;
+                            }
+                        }
+                        
+                        // Check if IP addresses match (same physical device should have same IPs)
+                        let ipsMatch = device.ipList.length > 0 && ips.length > 0 && 
+                                     device.ipList.some(ip => ips.includes(ip));
+                        
+                        if(serialsMatch || ipsMatch) {
+                            existingDeviceKey = deviceSerial;
+                            existingDevice = device;
+                            
+                            // Prefer alphanumeric serial number as the primary key
+                            if(isAlphanumeric(sn) && !isAlphanumeric(deviceSerial)) {
+                                useNewSerialAsKey = true;
+                                SyncLog.log("info", "MatroxCIP", `Device deduplication: Will migrate device from numeric '${deviceSerial}' to alphanumeric '${sn}' format`);
+                            }
+                            
+                            SyncLog.log("info", "MatroxCIP", `Device deduplication: Found existing device '${deviceSerial}' for new serial '${sn}' (serial match: ${serialsMatch}, IP match: ${ipsMatch})`);
+                            break;
+                        }
+                    }
                 }
 
-                cip.ipList = ips;
-                this.reloadData(ips, sn, cip);
-                setTimeout(()=>{
-                    this.reloadData(ips, sn, cip);
-                },5000);
+                let cip: MatroxCipDevice;
+                let finalDeviceKey: string;
                 
+                if(existingDevice) {
+                    cip = existingDevice;
+                    
+                    if(useNewSerialAsKey) {
+                        // Migrate device to use alphanumeric serial number as key
+                        delete this.state.devices[existingDeviceKey!];
+                        cip.sn = sn; // Update the device's serial number property
+                        this.state.devices[sn] = cip;
+                        finalDeviceKey = sn;
+                        SyncLog.log("info", "MatroxCIP", `Device deduplication: Migrated device to alphanumeric key '${sn}'`);
+                    } else {
+                        finalDeviceKey = existingDeviceKey!;
+                    }
+                    
+                    // Merge IP lists to ensure we have all available IPs
+                    let mergedIps = [...new Set([...cip.ipList, ...ips])];
+                    cip.ipList = mergedIps;
+                    SyncLog.log("info", "MatroxCIP", `Device deduplication: Updated existing device '${finalDeviceKey}' with IPs: ${mergedIps.join(', ')}`);
+                } else {
+                    // Create new device
+                    cip = new MatroxCipDevice();
+                    cip.sn = sn;
+                    cip.loading = false;
+                    cip.ipList = ips;
+                    this.state.devices[sn] = cip;
+                    finalDeviceKey = sn;
+                    SyncLog.log("info", "MatroxCIP", `Device deduplication: Created new device '${sn}' with IPs: ${ips.join(', ')}`);
+                }
 
+                this.reloadData(cip.ipList, finalDeviceKey, cip);
+                setTimeout(()=>{
+                    this.reloadData(cip.ipList, finalDeviceKey, cip);
+                },5000);
             }
-        }catch(e){}
+        }catch(e){
+            SyncLog.log("error", "MatroxCIP", "Error in nodeChange:", e.message);
+        }
     }
 
 
@@ -783,6 +883,123 @@ export default class MediaDevMatroxConvertIp {
         let data = context.ptpSettings;
         data.isEnabled = enabled;
         let result = await this.apiRequest(ipList, sn, "POST", "/device/settings/ptp", data);
+
+        setTimeout(()=>{
+            this.reloadData(ipList,sn,cip)
+        },2000)
+    }
+
+    // Web Accessible
+    async toggleMultiviewer(sn:string, enabled:boolean){
+        SyncLog.log("info", "MatroxCIP", `Toggling multiviewer for device ${sn}: ${enabled ? 'ENABLE' : 'DISABLE'}`);
+        
+        let ipList:string[] = [];
+        let cip;
+        
+        // Use flexible device resolution like makeConnection does
+        // Support numeric ID, device name, alias, or direct serial number lookup
+        let deviceFound = false;
+        let actualDeviceSerial = sn; // Track the actual device serial for reload
+        
+        // First try direct serial number lookup (existing behavior)
+        if(this.state.devices.hasOwnProperty(sn)){
+            ipList = this.state.devices[sn].ipList
+            cip = this.state.devices[sn]
+            deviceFound = true;
+            actualDeviceSerial = sn;
+            SyncLog.log("debug", "MatroxCIP", `Found device by serial number: ${sn}`);
+        } else {
+            // Try flexible name resolution like makeConnection
+            for(let deviceSerial in this.state.devices) {
+                let device = this.state.devices[deviceSerial];
+                // Check against device name, alias, or any identifier format
+                if(device.name === sn || device.alias === sn || deviceSerial === sn) {
+                    ipList = device.ipList;
+                    cip = device;
+                    deviceFound = true;
+                    actualDeviceSerial = deviceSerial; // Use the actual serial number for reload
+                    SyncLog.log("debug", "MatroxCIP", `Found device by name/alias resolution: ${sn} -> ${deviceSerial}`);
+                    break;
+                }
+            }
+        }
+        
+        if(!deviceFound){
+            SyncLog.log("error", "MatroxCIP", `Device not found: ${sn}. Available devices: ${Object.keys(this.state.devices).join(', ')}`);
+            throw new Error("Device not found.");
+        }
+
+        // Use the working multiviewer endpoint we discovered
+        // Note: Official endpoint /device/settings/Multiview returns 404 on current firmware
+        // Reverting to working /device/settings/context endpoint
+        
+        // Get current context to ensure we have the right structure
+        let context = await this.apiRequest(ipList, sn, "GET", "/device/settings/context");
+        if(!context){
+            throw new Error("Can not get Context.");
+        }
+        
+        // Create the multiviewer settings payload (our working format)
+        let multiviewerData = {
+            MultiviewSettings: {
+                isMultiviewEnabled: enabled
+            }
+        };
+        
+        SyncLog.log("debug", "MatroxCIP", `Sending multiviewer command to ${sn} (working endpoint):`, multiviewerData);
+        
+        // Send the multiviewer toggle command using working endpoint
+        let result = await this.apiRequest(ipList, actualDeviceSerial, "POST", "/device/settings/context", multiviewerData);
+        
+        SyncLog.log("debug", "MatroxCIP", `Multiviewer API result for ${sn}:`, result);
+        if(result && result.status === "success") {
+            SyncLog.log("info", "MatroxCIP", `Multiviewer ${enabled ? 'enabled' : 'disabled'} successfully for device ${sn}`);
+        } else {
+            SyncLog.log("warning", "MatroxCIP", `Multiviewer toggle response for ${sn}:`, result);
+        }
+
+        // When enabling multiviewer, also enable master mode (required for correct operation)
+        if(enabled) {
+            try {
+                SyncLog.log("info", "MatroxCIP", `Auto-enabling master mode for ${sn} after multiviewer enable`);
+                await this.masterEnable(actualDeviceSerial);
+                SyncLog.log("info", "MatroxCIP", `Master mode enabled successfully for ${sn}`);
+            } catch(masterError) {
+                SyncLog.log("warning", "MatroxCIP", `Failed to auto-enable master mode for ${sn}:`, masterError.message);
+            }
+        }
+
+        // Reload device data after a delay to reflect the changes
+        // Use the actual device serial number, not the search term
+        setTimeout(()=>{
+            SyncLog.log("debug", "MatroxCIP", `Reloading device data: original sn='${sn}', actualDeviceSerial='${actualDeviceSerial}', available devices: ${Object.keys(this.state.devices).join(', ')}`);
+            this.reloadData(ipList,actualDeviceSerial,cip)
+        },2000)
+    }
+
+    // Web Accessible
+    async setNmosRegistry(sn:string, ip:string, port:number){
+        let ipList:string[] = [];
+        let cip;
+        if(this.state.devices.hasOwnProperty(sn)){
+            ipList = this.state.devices[sn].ipList
+            cip = this.state.devices[sn]
+        }else{
+            throw new Error("Device not found.")
+        }
+
+        let context = await this.apiRequest(ipList, sn, "GET", "/device/settings/context");
+        if(!context){
+            throw new Error("Can not get Context.");
+        }
+        
+        // Configure manual NMOS registry on the device
+        let data = context.nmosSettings || {};
+        data.manualRegistryEnabled = true;
+        data.manualRegistryIp = ip;
+        data.manualRegistryPort = port;
+        
+        let result = await this.apiRequest(ipList, sn, "POST", "/device/settings/nmos", data);
 
         setTimeout(()=>{
             this.reloadData(ipList,sn,cip)
@@ -938,13 +1155,31 @@ export default class MediaDevMatroxConvertIp {
         }else{
             throw new Error("Device not found.")
         }
-        let context = await this.apiRequest(ipList, sn, "GET", "/device/settings/context");
-        if(!context){
-            throw new Error("Can not get Context.");
+        
+        // Get current master settings from the documented endpoint
+        let currentMasterSettings;
+        try {
+            currentMasterSettings = await this.apiRequest(ipList, sn, "GET", "/device/settings/streams/master");
+        } catch(e) {
+            // If the documented endpoint fails, fall back to context approach
+            SyncLog.log("debug", "MatroxCIP", `Master settings GET failed, using context fallback for ${sn}:`, e.message);
+            let context = await this.apiRequest(ipList, sn, "GET", "/device/settings/context");
+            if(!context){
+                throw new Error("Can not get Context.");
+            }
+            currentMasterSettings = context.StreamsEnableSettings || {};
         }
-        let data = context.StreamsEnableSettings;
-        data.enable = true;
-        await this.apiRequest(ipList, sn, "POST", "/device/settings/streams/master", data);
+        
+        // Construct proper StreamsMasterSettings according to API documentation
+        let masterData = {
+            enable: true,
+            isRedundancyEnabled: currentMasterSettings.isRedundancyEnabled || false,
+            connectionMode: currentMasterSettings.connectionMode || "manual"
+        };
+        
+        SyncLog.log("debug", "MatroxCIP", `Enabling master mode for ${sn}:`, masterData);
+        
+        await this.apiRequest(ipList, sn, "POST", "/device/settings/streams/master", masterData);
         
         setTimeout(()=>{
             this.reloadData(ipList,sn,cip)
@@ -1212,7 +1447,7 @@ export default class MediaDevMatroxConvertIp {
                             case "fpga2110_hdmi_colibri_rj45_1_2G5_rx":
                                 cip.firmwareMode = "HDMI 2.5G RX"
                                 cip.direction = "rx"
-                                cip.simpleMode = "IP to HDMI"
+                                cip.simpleMode = "Decoder"
                                 cip.type = "DRH"
                                 cip.hasEdid = true;
                             break;
@@ -1220,9 +1455,17 @@ export default class MediaDevMatroxConvertIp {
                             case "fpga2110_hdmi_colibri_rj45_1_2G5_tx":
                                 cip.firmwareMode = "HDMI 2.5G TX"
                                 cip.direction = "tx"
-                                cip.simpleMode = "HDMI to IP"
+                                cip.simpleMode = "Encoder"
                                 cip.type = "DRH"
                                 cip.hasEdid = true;
+                            break;
+
+                            case "fpga2110_sdi_colibri_rj45_1_2G5_tx":
+                                cip.firmwareMode = "SDI 2.5G TX"
+                                cip.direction = "tx"
+                                cip.simpleMode = "Encoder"
+                                cip.type = "DRS"
+                                cip.hasEdid = false;
                             break;
 
                             default:
@@ -1426,9 +1669,14 @@ export default class MediaDevMatroxConvertIp {
             ip = ipt;
 
             let caps = result.data
-            this.state.devices[sn].jpegxsLicensed = caps.isJpegxsLicenseInstalled
-            this.state.devices[sn].safeMode = caps.isSafeMode
-            this.state.devices[sn].goldenMode = caps.isGolden
+            // Safety check to ensure device exists before setting properties
+            if(this.state.devices[sn]) {
+                this.state.devices[sn].jpegxsLicensed = caps.isJpegxsLicenseInstalled
+                this.state.devices[sn].safeMode = caps.isSafeMode
+                this.state.devices[sn].goldenMode = caps.isGolden
+            } else {
+                SyncLog.log("warning", "MatroxCIP", `Device ${sn} not found in state during apiRequest caps update`);
+            }
 
             break;
         }

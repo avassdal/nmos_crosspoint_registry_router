@@ -20,6 +20,7 @@ Synchronized Objects provide a real-time view of the server's state. Clients can
 | `nmosConnectionState` | `global`    | The connection status of the server to the various NMOS registries it has discovered.                                                     |
 | `crosspoint`          | `global`    | The core crosspoint model, representing a simplified, user-friendly view of all devices and their available senders and receivers.        |
 | `mediadevices`        | `global`    | A list of all dynamically loaded media devices (e.g., Matrox, Riedel) and their current states.                                           |
+| `mediadevmatroxcip`   | `global`    | Real-time state and control data for Matrox Convert IP devices, including multiviewer status, master mode, and device capabilities.       |
 | `uiconfig`            | `public`    | General UI configuration, primarily used to inform the client about which server-side modules have been disabled.                         |
 
 ## 3. API Routes
@@ -142,3 +143,60 @@ A general-purpose endpoint for the crosspoint editor UI to send more complex API
 - **Method**: `POST`
 - **Permissions**: `global`
 - **Payload**: A flexible object structure defined by the needs of the crosspoint editor.
+
+## 4. Matrox Convert IP Specific Routes
+
+These routes are specific to Matrox Convert IP device control and are available when the Matrox Convert IP media device module is loaded.
+
+### `POST /matroxcip_togglemultiviewer`
+
+Enables or disables multiviewer mode on a Matrox Convert IP device. When enabling multiviewer, master mode is automatically enabled as well.
+
+- **Method**: `POST`
+- **Permissions**: `global`
+- **Payload**:
+
+```json
+{
+  "sn": "<device_serial_number>",
+  "enabled": true  // true to enable, false to disable
+}
+```
+
+**Example**:
+
+```json
+{
+  "sn": "YXA00634",
+  "enabled": true
+}
+```
+
+**Device Lookup**: The `sn` parameter supports flexible device identification:
+
+- Exact serial number match (e.g., `"YXA00634"`, `"8700634"`)
+- Device name match (e.g., `"CIP-DEC-634"`)
+- Device alias match
+
+### `POST /matroxcip_toggleptp`
+
+Enables or disables PTP (Precision Time Protocol) on a Matrox Convert IP device.
+
+- **Method**: `POST`
+- **Permissions**: `global`
+- **Payload**:
+
+```json
+{
+  "sn": "<device_serial_number>",
+  "enabled": true  // true to enable, false to disable
+}
+```
+
+**Example**:
+```json
+{
+  "sn": "CIP-DEC-634",
+  "enabled": false
+}
+```

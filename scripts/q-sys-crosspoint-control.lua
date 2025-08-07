@@ -382,6 +382,169 @@ function toHex(str)
   end))
 end
 
+-- Function to send multiviewer command via crosspoint router API
+function SendMultiviewerCommand(deviceSN, enabled)
+  if not deviceSN or deviceSN == "" then
+    print("ERROR: Cannot send multiviewer command - device serial number not provided")
+    return
+  end
+  
+  if not ws or not isSocketConnected or not isAuthenticated then
+    print("ERROR: Cannot send multiviewer command - not connected to crosspoint router")
+    return
+  end
+  
+  print("Sending multiviewer command via crosspoint router for device " .. deviceSN .. ": " .. (enabled and "ENABLE" or "DISABLE"))
+  
+  local command = {
+    type = "request",
+    method = "POST",
+    route = "matroxcip_togglemultiviewer",
+    id = tostring(request_id),
+    data = {
+      sn = deviceSN,
+      enabled = enabled
+    }
+  }
+  request_id = request_id + 1
+
+  local json_command, err = rapidjson.encode(command)
+  if json_command then
+    print("Sending multiviewer command: " .. json_command)
+    ws:Write(json_command)
+  else
+    print(format("Failed to encode multiviewer JSON command: %s", err))
+  end
+end
+
+-- Function to handle individual multiviewer control events (per decoder)
+function OnIndividualMultiviewerChanged(control, decoderControl)
+  print("🔥 DEBUG: OnIndividualMultiviewerChanged() called for specific decoder!")
+  
+  if not control then
+    print("❌ ERROR: Multiviewer control is nil")
+    return
+  end
+  
+  if not decoderControl then
+    print("❌ ERROR: Decoder control is nil")
+    return
+  end
+  
+  print("📊 DEBUG: Decoder control index: " .. tostring(decoderControl.Index or "unknown"))
+  print("📊 DEBUG: Control object type: " .. type(control))
+  
+  -- Try to access the Boolean property
+  local enabled
+  if control.Boolean ~= nil then
+    enabled = control.Boolean
+    print("📊 DEBUG: control.Boolean = " .. tostring(enabled))
+  else
+    print("❌ ERROR: control.Boolean is nil")
+    -- Try alternative property names
+    if control.Value ~= nil then
+      enabled = control.Value > 0
+      print("📊 DEBUG: Using control.Value = " .. tostring(control.Value) .. ", treating as " .. tostring(enabled))
+    else
+      print("❌ ERROR: Neither control.Boolean nor control.Value available")
+      return
+    end
+  end
+  
+  print("🎯 Multiviewer control changed to: " .. (enabled and "ON" or "OFF") .. " for decoder index: " .. tostring(decoderControl.Index or "unknown"))
+  
+  -- Check WebSocket connection
+  print("🔌 DEBUG: WebSocket connected: " .. tostring(ws and isSocketConnected))
+  print("🔐 DEBUG: Authenticated: " .. tostring(isAuthenticated))
+  
+  -- Find the specific decoder device serial number from the decoder control
+  local deviceSN = decoderControl.String
+  if not deviceSN or deviceSN == "" then
+    print("❌ ERROR: Decoder control has no device serial number")
+    return
+  end
+  
+  print("✅ Sending multiviewer command for single decoder: " .. deviceSN)
+  SendMultiviewerCommand(deviceSN, enabled)
+end
+
+-- Function to handle multiviewer control events (legacy/global version - kept for compatibility)
+function OnMultiviewerChanged(control)
+  print("🔥 DEBUG: OnMultiviewerChanged() called!")
+  
+  if not control then
+    print("❌ ERROR: Multiviewer control is nil")
+    return
+  end
+  
+  if type(control) ~= "table" then
+    print("❌ ERROR: Multiviewer control is not a table, type: " .. type(control))
+    return
+  end
+  
+  print("📊 DEBUG: Control object type: " .. type(control))
+  
+  -- Try to access the Boolean property
+  local enabled
+  if control.Boolean ~= nil then
+    enabled = control.Boolean
+    print("📊 DEBUG: control.Boolean = " .. tostring(enabled))
+  else
+    print("❌ ERROR: control.Boolean is nil")
+    -- Try alternative property names
+    if control.Value ~= nil then
+      enabled = control.Value > 0
+      print("📊 DEBUG: Using control.Value = " .. tostring(control.Value) .. ", treating as " .. tostring(enabled))
+    else
+      print("❌ ERROR: Neither control.Boolean nor control.Value available")
+      return
+    end
+  end
+  
+  print("🎯 Multiviewer control changed to: " .. (enabled and "ON" or "OFF"))
+  
+  -- Check WebSocket connection
+  print("🔌 DEBUG: WebSocket connected: " .. tostring(ws and isSocketConnected))
+  print("🔐 DEBUG: Authenticated: " .. tostring(isAuthenticated))
+  
+  -- Check device data availability
+  if not stored_device_data then
+    print("❌ ERROR: stored_device_data is nil")
+    return
+  end
+  
+  if not stored_device_data.devices then
+    print("❌ ERROR: stored_device_data.devices is nil")
+    return
+  end
+  
+  print("📊 DEBUG: Total devices in stored data: " .. tostring(#stored_device_data.devices or 0))
+  
+  -- Get the list of decoder devices from stored data
+  local decoderCount = 0
+  local totalDevices = 0
+  
+  for deviceId, device in pairs(stored_device_data.devices) do
+    totalDevices = totalDevices + 1
+    print("📊 DEBUG: Device " .. deviceId .. ", direction: " .. tostring(device.direction))
+    
+    -- Check if this is a decoder device (RX)
+    if device.direction == "rx" then
+      print("✅ Found decoder " .. deviceId .. " - sending multiviewer command")
+      SendMultiviewerCommand(deviceId, enabled)
+      decoderCount = decoderCount + 1
+    end
+  end
+  
+  print("📊 DEBUG: Processed " .. totalDevices .. " total devices")
+  
+  if decoderCount == 0 then
+    print("⚠️ WARNING: No decoder devices found")
+  else
+    print("✅ SUCCESS: Sent multiviewer commands to " .. decoderCount .. " decoder devices")
+  end
+end
+
 -- Helper to subscribe to a sync object
 function SubscribeToData(objectName)
   if ws and isSocketConnected and isAuthenticated then
@@ -505,15 +668,18 @@ function UpdateCipStatus(data, action)
           
           -- Only log if the value actually changed
           if tostring(old_value) ~= tostring(patch.value) then
-            -- More detailed logging for important properties
-            if property == "name" or property == "temperature" or property == "firmwareVersion" or 
-               property == "unreachable" or property == "failed" or property == "error" or 
-               property == "inputResolution" then
-              print("NOTICE: Device " .. device_id .. " " .. property .. 
-                    " changed from '" .. tostring(old_value) .. "' to '" .. tostring(patch.value) .. "'")
-            else
-              debug_print("Updated " .. device_id .. "." .. property .. 
-                    " from '" .. tostring(old_value) .. "' to '" .. tostring(patch.value) .. "'")
+            -- All property change logging is now conditional on debug mode
+            if DEBUG_ENABLED then
+              if property == "name" or property == "temperature" or property == "firmwareVersion" or 
+                 property == "unreachable" or property == "failed" or property == "error" or 
+                 property == "inputResolution" then
+                -- Important properties: use debug_print instead of always printing
+                debug_print("NOTICE: Device " .. device_id .. " " .. property .. 
+                      " changed from '" .. tostring(old_value) .. "' to '" .. tostring(patch.value) .. "')")
+              else
+                debug_print("Updated " .. device_id .. "." .. property .. 
+                      " from '" .. tostring(old_value) .. "' to '" .. tostring(patch.value) .. "')")
+              end
             end
           end
           
@@ -979,6 +1145,8 @@ function Initialize()
     print("Initialized JSON preset handler for 'Controls.Code'.")
   end
 
+  -- Multiviewer initialization will be moved after sortedDecoders is declared
+
   -- Create the list of choices for the source dropdowns
   local sourceChoices = { DISCONNECT_CHOICE }
   local encoderNames = GetEncoderNames()
@@ -1001,6 +1169,35 @@ function Initialize()
       table.insert(sortedDecoders, control)
     end
     table.sort(sortedDecoders, function(a, b) return a.Index < b.Index end)
+  end
+
+  -- Handle multiviewer controls as an array (like DecoderSource controls)
+  -- Must be after sortedDecoders is populated
+  local sortedMultiviewer = {}
+  if Controls.Multiviewer and type(Controls.Multiviewer) == "table" then
+    for _, control in pairs(Controls.Multiviewer) do
+      table.insert(sortedMultiviewer, control)
+    end
+    table.sort(sortedMultiviewer, function(a, b) return a.Index < b.Index end)
+    
+    -- Register event handlers for each multiviewer control
+    for i = 1, #sortedMultiviewer do
+      local multiviewerControl = sortedMultiviewer[i]
+      local decoderControl = sortedDecoders[i]  -- Get corresponding decoder
+      
+      if decoderControl then
+        -- Create a closure that captures the specific decoder information
+        multiviewerControl.EventHandler = function(control)
+          OnIndividualMultiviewerChanged(control, decoderControl)
+        end
+      else
+        print("WARNING: No corresponding decoder found for multiviewer control at index " .. i)
+      end
+    end
+    
+    print(format("Initialized %d multiviewer control handlers.", #sortedMultiviewer))
+  else
+    print("WARNING: 'Controls.Multiviewer' not found or is not a table. Multiviewer functionality will not be available.")
   end
 
   if #sortedDecoderSources == 0 then

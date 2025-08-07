@@ -74,6 +74,8 @@
       searchIp:"",
       batchJob:"",
       batchJobReboot:false,
+      nmosRegistryIp:"",
+      nmosRegistryPort:80,
     };
 
 
@@ -375,6 +377,65 @@
         });
     }
 
+    function setManualNmosRegistry() {
+        if (!filter.nmosRegistryIp || !filter.nmosRegistryPort) {
+            ServerConnector.addFeedback({level:"error",message:"Please enter both IP address and port"});
+            return;
+        }
+
+        // Get all devices from the state
+        const allDevices = Object.keys(sourceState.devices || {});
+        if (allDevices.length === 0) {
+            ServerConnector.addFeedback({level:"error",message:"No Matrox devices found"});
+            return;
+        }
+
+        // Validate IP format
+        const ipRegex = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/;
+        if (!ipRegex.test(filter.nmosRegistryIp)) {
+            ServerConnector.addFeedback({level:"error",message:"Please enter a valid IP address"});
+            return;
+        }
+
+        // Validate port range
+        const port = parseInt(filter.nmosRegistryPort);
+        if (port < 1 || port > 65535) {
+            ServerConnector.addFeedback({level:"error",message:"Please enter a valid port number (1-65535)"});
+            return;
+        }
+
+        ServerConnector.startLoad();
+
+        // Configure NMOS registry for all devices
+        let configuredCount = 0;
+        let errorCount = 0;
+        
+        allDevices.forEach((sn: string) => {
+            ServerConnector.post("matroxcip_setnmosregistry", {
+                sn: sn,
+                ip: filter.nmosRegistryIp,
+                port: port
+            }).then((f:any) => {
+                configuredCount++;
+                if (configuredCount + errorCount === allDevices.length) {
+                    ServerConnector.endLoad();
+                    if (errorCount === 0) {
+                        ServerConnector.addFeedback({level:"success",message:`NMOS registry configured successfully on all ${configuredCount} device(s)`});
+                        saveFilter();
+                        nmosRegistryModal.close();
+                    } else {
+                        ServerConnector.addFeedback({level:"warning",message:`NMOS registry configured on ${configuredCount} of ${allDevices.length} devices (${errorCount} failed)`});
+                    }
+                }
+            }).catch((e) => {
+                errorCount++;
+                if (configuredCount + errorCount === allDevices.length) {
+                    ServerConnector.endLoad();
+                    ServerConnector.addFeedback({level:"error",message:`Failed to configure NMOS registry on ${errorCount} device(s): ${e.message}`});
+                }
+            });
+        });
+    }
 
      function changeEdid(sn:string, name:string){
       ServerConnector.startLoad();
@@ -453,6 +514,7 @@
 
      let tableModal:any;
      let batchModal:any;
+     let nmosRegistryModal:any;
 
       let batchActive = false;
 
@@ -486,7 +548,7 @@
           return;
         }
         if(filter.hiddenCols.includes(id)){
-          filter.hiddenCols = filter.hiddenCols.filter((c)=>{
+          filter.hiddenCols = filter.hiddenCols.filter((c: string)=>{
             if(c == id){
               return false
             }
@@ -580,6 +642,9 @@
         <button class="btn-nav" data-tooltip-position="left,bottom" use:OverlayMenuService.tooltip data-tooltip="Bacth Jobs" on:click={()=>batchModal.showModal()}><Icon src={CodeBracket}></Icon></button>
       </li>
       <li>
+        <button class="btn-nav" data-tooltip-position="left,bottom" use:OverlayMenuService.tooltip data-tooltip="Manual NMOS Registry" on:click={()=>nmosRegistryModal.showModal()}><Icon src={Cog}></Icon></button>
+      </li>
+      <li>
         <button class="btn-nav" data-tooltip-position="left,bottom" use:OverlayMenuService.tooltip data-tooltip="Show or Hide Cols." on:click={()=>tableModal.showModal()}><Icon src={EllipsisVertical}></Icon></button>
       </li>
     </ul>
@@ -631,6 +696,8 @@
                       </div>
                       {#if col.resize}
                         <div class="resize-handler" draggable={true}
+                          role="separator"
+                          aria-label="Resize column"
                           on:dragstart={(e)=>{startResizeDrag(e,col.id)}}
                           on:drag={(e)=>{updateResizeDrag(e,col.id)}}
                           on:dragend={(e)=>{endResizeDrag(e,col.id)}}
@@ -726,7 +793,7 @@
                               {#if dev.frontpanelLock}
                                 Locked
                               {:else}
-                                
+                                Unlocked
                               {/if}
                             {/if}
 
@@ -1030,6 +1097,47 @@
           <span class="label-text">Reboot After Command</span> 
           <input on:input={()=>saveFilter()} bind:checked={filter.batchJobReboot} type="checkbox" class="toggle" />
         </label>
+      </div>
+      
+    </div>
+  </dialog>
+
+
+  <dialog bind:this={nmosRegistryModal} class="modal">
+    <div class="modal-box">
+      <form method="dialog">
+        <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+      </form>
+      <h3>Manual NMOS Registry</h3>
+      <div class="form-control">
+        <label class="label" for="nmos-registry-ip">
+          <span class="label-text">Registry IP Address</span>
+        </label>
+        <input 
+          id="nmos-registry-ip"
+          type="text" 
+          placeholder="192.168.1.100" 
+          class="input input-bordered" 
+          bind:value={filter.nmosRegistryIp} 
+          on:input={()=>saveFilter()}
+        />
+        
+        <label class="label mt-4" for="nmos-registry-port">
+          <span class="label-text">Registry Port</span>
+        </label>
+        <input 
+          id="nmos-registry-port"
+          type="number" 
+          placeholder="80" 
+          class="input input-bordered" 
+          bind:value={filter.nmosRegistryPort} 
+          on:input={()=>saveFilter()}
+        />
+        
+        <div class="modal-action">
+          <button class="btn btn-primary" on:click={setManualNmosRegistry}>Set Registry</button>
+          <button class="btn" on:click={()=>nmosRegistryModal.close()}>Cancel</button>
+        </div>
       </div>
       
     </div>
