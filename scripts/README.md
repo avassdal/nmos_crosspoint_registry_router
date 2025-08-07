@@ -34,13 +34,11 @@ This Lua script provides a comprehensive interface for controlling an NMOS Cross
    - `Controls["Connection status"]` (String): Connection status display
    - `Controls["CIP-Status"]` (String): Matrox CIP status (optional)
    - `Controls["Encoder"]` (String or Array): Encoder device names (comma-separated or array)
-
-3. **Create Decoder Controls**:
    - `Controls.Decoder` (Array of String): Decoder device names
    - `Controls.DecoderSource` (Array of String/Knob/Combo): Source selection for each decoder
    - `Controls.Multiviewer` (Array of Boolean): Per-decoder multiviewer toggle controls
 
-4. **Optional Controls**:
+3. **Optional Controls**:
    - `Controls.Code` (String): JSON preset input for advanced commands
 
 ## Configuration
@@ -82,77 +80,196 @@ MAX_RECONNECT_INTERVAL = 60 -- Maximum reconnect interval
 
 ### Making Connections
 
-#### Method 1: Manual Control
-- Use the `Controls.DecoderSource` dropdowns to select sources for each decoder
-- Changes are automatically sent to the NMOS Router
+The script provides multiple methods for creating connections between encoders and decoders, from simple individual connections to complex batch operations.
 
-#### Method 2: JSON Presets
-- Use `Controls.Code` (String) to input JSON connection commands
-- Format: JSON array of connection objects
+#### Method 1: Manual Control (Individual Connections)
 
-**Example JSON Preset**:
+Use the Q-SYS control interface for simple, one-at-a-time connections:
+
+- **Controls**: `Controls.DecoderSource[n]` dropdown controls (one per decoder)
+- **Options**: Each dropdown contains all available encoders plus "-- DISCONNECT --"
+- **Operation**: Select an encoder name to connect, or "-- DISCONNECT --" to break connection
+- **Automatic**: Changes are immediately sent to the NMOS Router via WebSocket API
+
+**Example Workflow**:
+1. `Controls.DecoderSource[1]` → Select "Studio_Camera_1" → Connects to `Controls.Decoder[1]`
+2. `Controls.DecoderSource[2]` → Select "Remote_Camera_2" → Connects to `Controls.Decoder[2]`
+3. `Controls.DecoderSource[3]` → Select "-- DISCONNECT --" → Disconnects `Controls.Decoder[3]`
+
+#### Method 2: JSON Presets (Batch Operations)
+
+Use `Controls.Code` (String) for advanced batch operations and complex routing scenarios:
+
+##### Single Connection
 ```json
 {
   "method": "POST",
-  "route": "/makeconnection",
+  "route": "makeconnection",
   "data": {
-    "source": "encoder_name",
-    "destination": "decoder_name"
+    "source": "Studio_Camera_1",
+    "destination": "Decoder_Main"
   }
 }
 ```
 
+##### Multiple Connections (Batch)
+```json
+{
+  "method": "POST",
+  "route": "makeconnection",
+  "data": {
+    "multiple": [
+      {"source": "Camera_1", "destination": "Decoder_1"},
+      {"source": "Camera_2", "destination": "Decoder_2"},
+      {"source": "Camera_3", "destination": "Decoder_3"},
+      {"source": "Camera_4", "destination": "Decoder_4"}
+    ]
+  }
+}
+```
+
+#### Batch Operations
+
+All batch operations use the same `makeconnection` route with a `multiple` array. Each operation is a simple `{"source": "...", "destination": "..."}` object.
+
+**Core Pattern:**
+```json
+{
+  "method": "POST",
+  "route": "makeconnection", 
+  "data": {
+    "multiple": [
+      {"source": "Source_Name", "destination": "Destination_Name"}
+    ]
+  }
+}
+```
+
+**Examples:**
+
+```json
+// One-to-Many: Connect one source to multiple destinations
+{
+  "method": "POST",
+  "route": "makeconnection",
+  "data": {
+    "multiple": [
+      {"source": "Main_Camera", "destination": "Decoder_1"},
+      {"source": "Main_Camera", "destination": "Decoder_2"},
+      {"source": "Main_Camera", "destination": "Decoder_3"}
+    ]
+  }
+}
+
+// Mass Disconnect: Use empty source "" to disconnect
+{
+  "method": "POST", 
+  "route": "makeconnection",
+  "data": {
+    "multiple": [
+      {"source": "", "destination": "Decoder_1"},
+      {"source": "", "destination": "Decoder_2"},
+      {"source": "", "destination": "Decoder_3"}
+    ]
+  }
+}
+
+// Mixed Operations: Connect and disconnect in one batch
+{
+  "method": "POST",
+  "route": "makeconnection", 
+  "data": {
+    "multiple": [
+      {"source": "Camera_1", "destination": "Decoder_A"},
+      {"source": "", "destination": "Decoder_B"},
+      {"source": "Camera_3", "destination": "Decoder_C"}
+    ]
+  }
+}
+```
+
+##### Flow-Specific Connections
+```json
+{
+  "method": "POST",
+  "route": "makeconnection",
+  "data": {
+    "multiple": [
+      {"source": "Camera_1", "destination": "Decoder_Main.v1"},
+      {"source": "Audio_Mix", "destination": "Decoder_Main.a1"}
+    ]
+  }
+}
+```
+
+#### Connection Naming and Addressing
+
+The system supports flexible device addressing for robust operation:
+
+**Device Identification Methods**:
+- **Serial Number**: `"CIP-ENC-123"`, `"YXA00634"`
+- **Device Name**: `"Studio Camera 1"`, `"Main Decoder"`
+- **Device Alias**: `"Cam1"`, `"MainOut"`
+- **Numeric ID**: `"123"`, `"634"`
+
+**Flow Addressing** (optional):
+- **Video Flows**: `"DeviceName.v1"`, `"DeviceName.v2"`
+- **Audio Flows**: `"DeviceName.a1"`, `"DeviceName.a2"`
+- **Data Flows**: `"DeviceName.d1"`, `"DeviceName.d2"`
+- **Channel Numbers**: `"DeviceName.1"`, `"DeviceName.2"` (multiviewer)
+
+#### Error Handling and Validation
+
+**Automatic Validation**:
+- Device names are validated against discovered NMOS devices
+- Invalid connections are rejected with error messages
+- Network connectivity issues trigger automatic reconnection
+- Malformed JSON presets generate parsing error messages
+
+**Common Error Scenarios**:
+```json
+// ❌ Invalid - Device not found
+{"source": "NonExistent_Camera", "destination": "Decoder_1"}
+
+// ❌ Invalid - Malformed JSON
+{"source": "Camera_1" "destination": "Decoder_1"}  // Missing comma
+
+// ✅ Valid - Proper format and existing devices
+{"source": "Studio_Camera_1", "destination": "Main_Decoder"}
+```
+
+#### Batch Operation Best Practices
+
+**Performance Optimization**:
+- Group related connections into single batch operations
+- Use `multiple` array for connecting more than 3 encoder/decoder pairs
+- Avoid rapid successive individual connections (use batching instead)
+- Monitor debug logs for connection confirmation
+
+**Workflow Recommendations**:
+1. **Planning**: Identify all source-destination pairs before starting
+2. **Validation**: Verify device names using Q-SYS debug logs or device lists
+3. **Testing**: Test small batches (2-3 connections) before large operations
+4. **Monitoring**: Enable debug logging during initial setup and troubleshooting
+5. **Documentation**: Keep JSON presets saved for repeated routing scenarios
+
 ### Matrox Convert IP Multiviewer Control
 
-The script provides comprehensive multiviewer control for Matrox Convert IP devices:
+The script provides comprehensive multiviewer control for Matrox Convert IP devices, enabling multiple encoders to be patched to a single decoder for multiviewer display:
 
+**Core Features**:
 - **Per-Decoder Toggles**: Each decoder has its own multiviewer toggle (`Controls.Multiviewer[n]`)
 - **Automatic Master Mode**: When multiviewer is enabled, master mode is automatically activated
 - **Device Identification**: Supports device lookup by serial number, device name, or alias
 - **WebSocket API Integration**: Uses crosspoint router API instead of direct device HTTP calls
 - **Multiple Connection Methods**: Supports both postfix channel and flow type notation
+- **Batch Operations**: Enable multiviewer and connect multiple encoders in single operations
 
 ##### Multiviewer Connection Methods
 
-The script provides multiple ways to connect encoders to multiviewer decoders:
+Connect encoders to multiviewer decoders using JSON batch operations with postfix or flow type notation:
 
-**Method 1: Postfix Channel Numbers (Simple)**
-```lua
--- Connect encoders to specific multiviewer channels
-ConnectToMultiviewer({"Encoder1", "Encoder2", "Encoder3"}, "CIP-DEC-740", 1)
--- Result: Encoder1→CIP-DEC-740.1, Encoder2→CIP-DEC-740.2, Encoder3→CIP-DEC-740.3
-```
-
-**Method 2: Flow Type Notation (Advanced)**
-```lua
--- Connect encoders using NMOS flow type notation
-ConnectToMultiviewerFlows({"Encoder1", "Encoder2"}, "CIP-DEC-740", "v", 1)
--- Result: Encoder1→CIP-DEC-740.v1, Encoder2→CIP-DEC-740.v2
-
--- Audio flows
-ConnectToMultiviewerFlows({"AudioEnc1", "AudioEnc2"}, "CIP-DEC-740", "a", 1)
--- Result: AudioEnc1→CIP-DEC-740.a1, AudioEnc2→CIP-DEC-740.a2
-```
-
-**Method 3: Complete Multiviewer Setup**
-```lua
--- Enable multiviewer and connect encoders in one step
-SetupMultiviewer("CIP-DEC-740", {"Enc1", "Enc2", "Enc3", "Enc4"}, {
-  startChannel = 1,
-  useFlowType = false,  -- Use postfix notation
-  enableFirst = true    -- Enable multiviewer mode first
-})
-
--- Advanced setup with flow type notation
-SetupMultiviewer("CIP-DEC-740", {"Enc1", "Enc2"}, {
-  startChannel = 1,
-  useFlowType = true,
-  flowType = "v",
-  enableFirst = true
-})
-```
-
-**Method 4: JSON Preset (Batch Operations)**
+**Postfix Channel Numbers:**
 ```json
 {
   "method": "POST", 
@@ -208,33 +325,7 @@ The script handles several message types from the NMOS Router:
 - **ping/pong**: Keep-alive messages
 - **authfailed/autherror**: Authentication failure notifications
 
-### Data Structures
 
-#### Device Information
-```lua
-stored_device_data = {
-  devices = {
-    [device_id] = {
-      name = "device_name",
-      type = "encoder|decoder",
-      state = "connected|disconnected",
-      flows = {...}
-    }
-  }
-}
-```
-
-#### Connection Commands
-```lua
-{
-  method = "POST",
-  route = "/makeconnection",
-  data = {
-    source = "encoder_device_id",
-    destination = "decoder_device_id"
-  }
-}
-```
 
 ## Troubleshooting
 
@@ -279,34 +370,6 @@ This will provide verbose output in Q-SYS logs for troubleshooting.
 
 ## Advanced Configuration
 
-### Custom Device Mapping
-
-The script reads encoder names from `Controls["Encoder"]` and supports:
-
-```lua
--- Option 1: Comma-separated string in single control
-Controls["Encoder"].String = "Studio_Encoder,Remote_Encoder,Backup_Encoder"
-
--- Option 2: Array of encoder controls
-Controls["Encoder"][1].String = "Studio_Encoder"
-Controls["Encoder"][2].String = "Remote_Encoder"
-
--- Decoder controls are automatically mapped from arrays
--- Controls.Decoder[1].String, Controls.DecoderSource[1], etc.
-```
-
-### Custom Authentication
-
-For custom authentication schemes, modify the authentication handler:
-
-```lua
--- Custom authentication response generation
-local function customAuthResponse(seed)
-  -- Implement custom authentication logic here
-  return custom_hash_function(seed)
-end
-```
-
 ### Integration with External Systems
 
 The script can be extended to integrate with:
@@ -317,7 +380,6 @@ The script can be extended to integrate with:
 ## Performance Considerations
 
 ### Network Optimization
-- Use wired connections for Q-SYS Core when possible
 - Minimize network hops between Q-SYS and NMOS Router
 - Configure appropriate ping intervals (default 30 seconds) for keep-alive
 - Monitor exponential backoff reconnection behavior
