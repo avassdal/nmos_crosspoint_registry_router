@@ -122,14 +122,77 @@ The script provides multiple ways to connect encoders to multiviewer decoders:
 ConnectToMultiviewer({"Encoder1", "Encoder2", "Encoder3"}, "CIP-DEC-740", 1)
 -- Result: Encoder1→CIP-DEC-740.1, Encoder2→CIP-DEC-740.2, Encoder3→CIP-DEC-740.3
 ```
-- API response status is tracked and reported
+
+**Method 2: Flow Type Notation (Advanced)**
+```lua
+-- Connect encoders using NMOS flow type notation
+ConnectToMultiviewerFlows({"Encoder1", "Encoder2"}, "CIP-DEC-740", "v", 1)
+-- Result: Encoder1→CIP-DEC-740.v1, Encoder2→CIP-DEC-740.v2
+
+-- Audio flows
+ConnectToMultiviewerFlows({"AudioEnc1", "AudioEnc2"}, "CIP-DEC-740", "a", 1)
+-- Result: AudioEnc1→CIP-DEC-740.a1, AudioEnc2→CIP-DEC-740.a2
+```
+
+**Method 3: Complete Multiviewer Setup**
+```lua
+-- Enable multiviewer and connect encoders in one step
+SetupMultiviewer("CIP-DEC-740", {"Enc1", "Enc2", "Enc3", "Enc4"}, {
+  startChannel = 1,
+  useFlowType = false,  -- Use postfix notation
+  enableFirst = true    -- Enable multiviewer mode first
+})
+
+-- Advanced setup with flow type notation
+SetupMultiviewer("CIP-DEC-740", {"Enc1", "Enc2"}, {
+  startChannel = 1,
+  useFlowType = true,
+  flowType = "v",
+  enableFirst = true
+})
+```
+
+**Method 4: JSON Preset (Batch Operations)**
+```json
+{
+  "method": "POST", 
+  "route": "makeconnection",
+  "data": {
+    "multiple": [
+      {"source": "Encoder1", "destination": "CIP-DEC-740.1"},
+      {"source": "Encoder2", "destination": "CIP-DEC-740.2"},
+      {"source": "Encoder3", "destination": "CIP-DEC-740.3"},
+      {"source": "Encoder4", "destination": "CIP-DEC-740.4"}
+    ]
+  }
+}
+```
+
+##### Channel Notation Formats
+
+| Format | Example | Description |
+|--------|---------|-------------|
+| Postfix Numbers | `CIP-DEC-740.1` | Simple channel numbers (1, 2, 3, 4...) |
+| Video Flows | `CIP-DEC-740.v1` | NMOS video flow notation |
+| Audio Flows | `CIP-DEC-740.a1` | NMOS audio flow notation |
+| Data Flows | `CIP-DEC-740.d1` | NMOS data flow notation |
+
+**Debug Output**: Enable debug logging to see detailed multiviewer operation logs including device lookup, API calls, and status changes.
+
+**Troubleshooting**:
+- Verify device is reachable and has multiviewer license installed
+- Check WebSocket connection status
+- Enable debug logging for detailed operation tracking
+- Ensure correct device serial number/name in decoder controls
+- For batch connections, verify all encoder names are valid
 
 ### Supported Commands
 
-- **Connect**: `join <encoder> <decoder>`
-- **Disconnect**: `stop <decoder>`
-- **Multi-connection**: Support for multiple encoder/decoder pairs
-- **Multiviewer Toggle**: Per-decoder multiviewer enable/disable
+- **Individual Connections**: Select encoder for each decoder via `Controls.DecoderSource` dropdowns
+- **Disconnect**: Select "-- DISCONNECT --" option to clear decoder connection
+- **JSON Presets**: Use `Controls.Code` for batch operations and complex routing
+- **Multiviewer Toggle**: Per-decoder multiviewer enable/disable via `Controls.Multiviewer` array
+- **Batch Multiviewer**: Use `ConnectToMultiviewer()`, `ConnectToMultiviewerFlows()`, or `SetupMultiviewer()` functions
 
 ## API Integration
 
@@ -179,7 +242,7 @@ stored_device_data = {
 
 1. **Check IP Address**: Verify `Controls["IP Address"]` is correct
 2. **Network Connectivity**: Test ping from Q-SYS Core to NMOS Router
-3. **WebSocket Port**: Ensure port 8080 (or configured port) is accessible
+3. **WebSocket Port**: Ensure port 80 (or configured port) is accessible
 4. **Authentication**: Verify username/password in script configuration
 
 ### Debug Logging
