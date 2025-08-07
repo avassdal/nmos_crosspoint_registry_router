@@ -104,27 +104,24 @@ MAX_RECONNECT_INTERVAL = 60 -- Maximum reconnect interval
 
 ### Matrox Convert IP Multiviewer Control
 
-The script provides integrated control for Matrox Convert IP device multiviewer functionality:
+The script provides comprehensive multiviewer control for Matrox Convert IP devices:
 
-#### Per-Decoder Multiviewer Controls
-- Each decoder has its own `Controls.Multiviewer[n]` (Boolean) toggle
-- Toggling enables/disables multiviewer mode for the specific decoder
-- When multiviewer is enabled, master mode is automatically activated
-- Changes are sent via WebSocket API to the NMOS Crosspoint Router
+- **Per-Decoder Toggles**: Each decoder has its own multiviewer toggle (`Controls.Multiviewer[n]`)
+- **Automatic Master Mode**: When multiviewer is enabled, master mode is automatically activated
+- **Device Identification**: Supports device lookup by serial number, device name, or alias
+- **WebSocket API Integration**: Uses crosspoint router API instead of direct device HTTP calls
+- **Multiple Connection Methods**: Supports both postfix channel and flow type notation
 
-#### Automatic Master Mode Activation
-- Master mode is automatically enabled when multiviewer is activated
-- Ensures proper operation of multiviewer functionality
-- Uses official Matrox Convert IP REST API endpoints
+##### Multiviewer Connection Methods
 
-#### Device Identification
-- Supports flexible device lookup by serial number, device name, or alias
-- Handles multiple serial number formats (e.g., "YXA00634", "8700634", "CIP-DEC-634")
-- Robust error handling for device discovery and API calls
+The script provides multiple ways to connect encoders to multiviewer decoders:
 
-#### Debug Output
-- Multiviewer toggle events generate debug logs when `DEBUG_ENABLED = true`
-- Device status changes are logged for troubleshooting
+**Method 1: Postfix Channel Numbers (Simple)**
+```lua
+-- Connect encoders to specific multiviewer channels
+ConnectToMultiviewer({"Encoder1", "Encoder2", "Encoder3"}, "CIP-DEC-740", 1)
+-- Result: Encoder1→CIP-DEC-740.1, Encoder2→CIP-DEC-740.2, Encoder3→CIP-DEC-740.3
+```
 - API response status is tracked and reported
 
 ### Supported Commands

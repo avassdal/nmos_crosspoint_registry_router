@@ -417,6 +417,108 @@ function SendMultiviewerCommand(deviceSN, enabled)
   end
 end
 
+-- Enhanced multiviewer functions supporting both postfix and flow type notation
+
+-- Connect multiple encoders to a multiviewer decoder using postfix channel numbers
+-- Example: ConnectToMultiviewer({"Encoder1", "Encoder2"}, "CIP-DEC-740", 1)
+-- Result: Encoder1→CIP-DEC-740.1, Encoder2→CIP-DEC-740.2
+function ConnectToMultiviewer(encoderList, decoderName, startChannel)
+  if not encoderList or #encoderList == 0 then
+    print("ERROR: No encoders specified for multiviewer connection")
+    return
+  end
+  
+  if not decoderName or decoderName == "" then
+    print("ERROR: No decoder specified for multiviewer connection")
+    return
+  end
+  
+  startChannel = startChannel or 1
+  print("Connecting " .. #encoderList .. " encoders to multiviewer decoder " .. decoderName .. " starting at channel " .. startChannel)
+  
+  local connections = {}
+  for i, encoderName in ipairs(encoderList) do
+    local channelNum = startChannel + i - 1
+    local destination = decoderName .. "." .. channelNum
+    table.insert(connections, {
+      source = encoderName,
+      destination = destination
+    })
+    print("  " .. encoderName .. " → " .. destination)
+  end
+  
+  local payload = { multiple = connections }
+  SendCommand(payload)
+end
+
+-- Connect multiple encoders to a multiviewer decoder using flow type notation
+-- Example: ConnectToMultiviewerFlows({"Encoder1", "Encoder2"}, "CIP-DEC-740", "v", 1)
+-- Result: Encoder1→CIP-DEC-740.v1, Encoder2→CIP-DEC-740.v2
+function ConnectToMultiviewerFlows(encoderList, decoderName, flowType, startFlow)
+  if not encoderList or #encoderList == 0 then
+    print("ERROR: No encoders specified for multiviewer flow connection")
+    return
+  end
+  
+  if not decoderName or decoderName == "" then
+    print("ERROR: No decoder specified for multiviewer flow connection")
+    return
+  end
+  
+  flowType = flowType or "v"  -- Default to video
+  startFlow = startFlow or 1
+  print("Connecting " .. #encoderList .. " encoders to multiviewer decoder " .. decoderName .. " using flow type '" .. flowType .. "' starting at flow " .. startFlow)
+  
+  local connections = {}
+  for i, encoderName in ipairs(encoderList) do
+    local flowNum = startFlow + i - 1
+    local destination = decoderName .. "." .. flowType .. flowNum
+    table.insert(connections, {
+      source = encoderName,
+      destination = destination
+    })
+    print("  " .. encoderName .. " → " .. destination)
+  end
+  
+  local payload = { multiple = connections }
+  SendCommand(payload)
+end
+
+-- Batch multiviewer setup: enable multiviewer mode and connect encoders
+-- Supports both notation types via 'useFlowType' parameter
+function SetupMultiviewer(decoderName, encoderList, options)
+  options = options or {}
+  local startChannel = options.startChannel or 1
+  local useFlowType = options.useFlowType or false
+  local flowType = options.flowType or "v"
+  local enableFirst = options.enableFirst ~= false  -- Default to true
+  
+  print("Setting up multiviewer for " .. decoderName .. " with " .. #encoderList .. " encoders")
+  
+  -- Step 1: Enable multiviewer mode if requested
+  if enableFirst then
+    print("Step 1: Enabling multiviewer mode for " .. decoderName)
+    SendMultiviewerCommand(decoderName, true)
+    
+    -- Add a small delay to allow multiviewer to initialize
+    Timer.CallAfter(function()
+      print("Step 2: Connecting encoders to multiviewer channels")
+      if useFlowType then
+        ConnectToMultiviewerFlows(encoderList, decoderName, flowType, startChannel)
+      else
+        ConnectToMultiviewer(encoderList, decoderName, startChannel)
+      end
+    end, 2)
+  else
+    -- Connect immediately without enabling multiviewer first
+    if useFlowType then
+      ConnectToMultiviewerFlows(encoderList, decoderName, flowType, startChannel)
+    else
+      ConnectToMultiviewer(encoderList, decoderName, startChannel)
+    end
+  end
+end
+
 -- Function to handle individual multiviewer control events (per decoder)
 function OnIndividualMultiviewerChanged(control, decoderControl)
   print("🔥 DEBUG: OnIndividualMultiviewerChanged() called for specific decoder!")
